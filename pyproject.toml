@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-chain"
+version = "0.1.0"
+description = "An AI-powered agentic chain framework for solving issues in software projects"
+readme = "agentic_chain/README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Skills Integrate MCP", email = "example@example.com"}
+]
+keywords = [
+    "ai",
+    "agent",
+    "automation",
+    "issue-solver",
+    "code-review",
+    "project-analysis",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+agentic-chain = "agentic_chain.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/skills/integrate-mcp-with-copilot"
+Repository = "https://github.com/skills/integrate-mcp-with-copilot"
+Issues = "https://github.com/skills/integrate-mcp-with-copilot/issues"
+
+[tool.setuptools.packages.find]
+include = ["agentic_chain*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]

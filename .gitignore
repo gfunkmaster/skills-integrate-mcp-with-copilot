@@ -38,6 +38,15 @@ Thumbs.db
 
 # Python files
 __pycache__
+*.egg-info
+*.egg
+build/
+dist/
 
 # Env files
 .env
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
