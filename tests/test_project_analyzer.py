@@ -128,6 +128,5 @@ class TestProjectAnalyzer:
         
     def test_validate_context_missing_path(self):
         """Test context validation with missing project path."""
-        context = AgentContext(project_path="")
-        # Empty path should be falsy
+        # Test with None - should be falsy
         assert not self.analyzer.validate_context(AgentContext(project_path=None))
