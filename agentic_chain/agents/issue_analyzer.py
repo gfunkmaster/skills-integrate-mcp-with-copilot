@@ -21,7 +21,15 @@ class IssueAnalyzer(BaseAgent):
     - Priority scoring algorithm
     - Sentiment analysis for urgency detection
     - Auto-labeling suggestions
+    
+    Attributes:
+        MIN_PRIORITY_SCORE: Minimum priority score value (default 1)
+        MAX_PRIORITY_SCORE: Maximum priority score value (default 100)
     """
+    
+    # Priority score bounds as class constants
+    MIN_PRIORITY_SCORE = 1
+    MAX_PRIORITY_SCORE = 100
     
     def __init__(self, name: str = "IssueAnalyzer"):
         super().__init__(name)
@@ -94,7 +102,7 @@ class IssueAnalyzer(BaseAgent):
                 score += 5
         
         # Ensure score is within bounds
-        return max(1, min(100, score))
+        return max(self.MIN_PRIORITY_SCORE, min(self.MAX_PRIORITY_SCORE, score))
     
     def _analyze_sentiment(self, issue: dict) -> Dict:
         """

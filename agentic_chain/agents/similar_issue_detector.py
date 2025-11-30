@@ -6,7 +6,7 @@ to help identify duplicates and related issues quickly.
 """
 
 import re
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set
 from . import BaseAgent, AgentContext
 
 
@@ -16,10 +16,25 @@ class SimilarIssueDetector(BaseAgent):
     
     This is a lightweight implementation optimized for speed (< 5 seconds)
     that doesn't require external NLP libraries.
+    
+    Attributes:
+        DUPLICATE_THRESHOLD: Similarity score threshold for potential duplicates (default 0.7)
+        RELEVANCE_THRESHOLD: Minimum similarity score to be considered related (default 0.3)
     """
     
-    def __init__(self, name: str = "SimilarIssueDetector"):
+    # Configurable thresholds as class constants
+    DUPLICATE_THRESHOLD = 0.7
+    RELEVANCE_THRESHOLD = 0.3
+    
+    def __init__(
+        self, 
+        name: str = "SimilarIssueDetector",
+        duplicate_threshold: float = None,
+        relevance_threshold: float = None
+    ):
         super().__init__(name)
+        self.duplicate_threshold = duplicate_threshold or self.DUPLICATE_THRESHOLD
+        self.relevance_threshold = relevance_threshold or self.RELEVANCE_THRESHOLD
         
     def execute(self, context: AgentContext) -> AgentContext:
         """
@@ -39,7 +54,8 @@ class SimilarIssueDetector(BaseAgent):
         # Store results in metadata
         context.metadata["similar_issues"] = similar_issues
         context.metadata["potential_duplicates"] = [
-            issue for issue in similar_issues if issue["similarity_score"] >= 0.7
+            issue for issue in similar_issues 
+            if issue["similarity_score"] >= self.duplicate_threshold
         ]
         
         return context
@@ -85,13 +101,13 @@ class SimilarIssueDetector(BaseAgent):
             # Weighted combination
             similarity_score = (keyword_score * 0.6) + (title_score * 0.4)
             
-            if similarity_score >= 0.3:  # Threshold for relevance
+            if similarity_score >= self.relevance_threshold:
                 similar.append({
                     "issue_number": issue.get("number"),
                     "title": issue.get("title"),
                     "similarity_score": round(similarity_score, 2),
                     "matching_keywords": list(current_keywords & issue_keywords)[:5],
-                    "is_potential_duplicate": similarity_score >= 0.7,
+                    "is_potential_duplicate": similarity_score >= self.duplicate_threshold,
                 })
         
         # Sort by similarity score, highest first
