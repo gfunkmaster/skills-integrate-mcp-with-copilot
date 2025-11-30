@@ -2,6 +2,7 @@
 Solution Implementer Agent - Generates and applies code fixes.
 """
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -11,22 +12,77 @@ from datetime import datetime, timezone
 from . import BaseAgent, AgentContext
 
 
+logger = logging.getLogger(__name__)
+
+
+# Default limits for LLM prompt construction
+DEFAULT_MAX_REQUIREMENTS = 5
+DEFAULT_MAX_FILES = 5
+
+
 class SolutionImplementer(BaseAgent):
     """
     Generates solution proposals and implementation plans based on
     issue analysis and code review.
+    
+    When an LLM provider is configured, uses AI to generate actual code
+    solutions and intelligent implementation plans.
     """
     
-    def __init__(self, name: str = "SolutionImplementer"):
+    def __init__(
+        self,
+        name: str = "SolutionImplementer",
+        llm_provider: Optional["LLMProvider"] = None,
+        max_requirements: int = DEFAULT_MAX_REQUIREMENTS,
+        max_files: int = DEFAULT_MAX_FILES,
+    ):
+        """
+        Initialize the SolutionImplementer.
+        
+        Args:
+            name: Agent name.
+            llm_provider: Optional LLM provider for AI-powered generation.
+            max_requirements: Maximum number of requirements to include in LLM prompts.
+            max_files: Maximum number of files to include in LLM prompts.
+        """
         super().__init__(name)
+        self._llm_provider = llm_provider
+        self.max_requirements = max_requirements
+        self.max_files = max_files
+        
+    @property
+    def llm_provider(self):
+        """Get the LLM provider."""
+        return self._llm_provider
+    
+    @llm_provider.setter
+    def llm_provider(self, provider):
+        """Set the LLM provider."""
+        self._llm_provider = provider
         
     def execute(self, context: AgentContext) -> AgentContext:
         """
         Generate solution proposals and implementation plan.
+        
+        If an LLM provider is available, generates AI-powered solutions.
+        Otherwise, falls back to static analysis.
         """
         if not context.issue_analysis:
             raise ValueError("Issue analysis is required to implement solution")
-            
+        
+        # Check if LLM is available
+        if self._llm_provider:
+            logger.info("Using LLM-powered solution generation")
+            solution = self._generate_llm_solution(context)
+        else:
+            logger.info("Using static analysis for solution generation")
+            solution = self._generate_static_solution(context)
+        
+        context.solution = solution
+        return context
+    
+    def _generate_llm_solution(self, context: AgentContext) -> dict:
+        """Generate solution using LLM."""
         solution = {
             "proposed_changes": self._generate_proposed_changes(context),
             "implementation_plan": self._create_implementation_plan(context),
@@ -34,10 +90,133 @@ class SolutionImplementer(BaseAgent):
             "documentation_updates": self._identify_doc_updates(context),
             "risks": self._assess_risks(context),
             "generated_at": datetime.now(timezone.utc).isoformat(),
+            "llm_generated": True,
         }
         
-        context.solution = solution
-        return context
+        # Generate AI-powered implementation plan
+        try:
+            ai_plan = self._generate_ai_implementation_plan(context)
+            if ai_plan:
+                solution["ai_implementation_plan"] = ai_plan
+        except Exception as e:
+            logger.warning(f"Failed to generate AI implementation plan: {e}")
+        
+        # Generate AI-powered code suggestions
+        try:
+            code_suggestions = self._generate_ai_code_suggestions(context)
+            if code_suggestions:
+                solution["code_suggestions"] = code_suggestions
+        except Exception as e:
+            logger.warning(f"Failed to generate AI code suggestions: {e}")
+        
+        return solution
+    
+    def _generate_static_solution(self, context: AgentContext) -> dict:
+        """Generate solution using static analysis (fallback)."""
+        return {
+            "proposed_changes": self._generate_proposed_changes(context),
+            "implementation_plan": self._create_implementation_plan(context),
+            "test_strategy": self._define_test_strategy(context),
+            "documentation_updates": self._identify_doc_updates(context),
+            "risks": self._assess_risks(context),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "llm_generated": False,
+        }
+    
+    def _generate_ai_implementation_plan(self, context: AgentContext) -> Optional[dict]:
+        """Generate an AI-powered implementation plan."""
+        if not self._llm_provider:
+            return None
+        
+        issue_data = context.issue_data or {}
+        issue_description = f"{issue_data.get('title', '')}\n\n{issue_data.get('body', '')}"
+        
+        response = self._llm_provider.generate_implementation_plan(
+            issue_description=issue_description,
+            project_context=context.project_analysis,
+        )
+        
+        # Track usage
+        if response.usage:
+            context.llm_context.add_usage(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                cost=response.usage.estimated_cost,
+            )
+            context.llm_context.provider = self._llm_provider.config.provider
+            context.llm_context.model = response.model
+        
+        context.llm_context.responses.append({
+            "type": "implementation_plan",
+            "content": response.content,
+            "model": response.model,
+        })
+        
+        return {
+            "content": response.content,
+            "model": response.model,
+            "tokens_used": response.usage.total_tokens if response.usage else 0,
+        }
+    
+    def _generate_ai_code_suggestions(self, context: AgentContext) -> Optional[dict]:
+        """Generate AI-powered code suggestions."""
+        if not self._llm_provider:
+            return None
+        
+        issue_analysis = context.issue_analysis or {}
+        code_review = context.code_review or {}
+        
+        # Build prompt with context
+        issue_type = issue_analysis.get("issue_type", "unknown")
+        requirements = issue_analysis.get("requirements", [])
+        relevant_files = code_review.get("relevant_files", [])
+        
+        # Use configurable limits
+        limited_requirements = requirements[:self.max_requirements]
+        limited_files = relevant_files[:self.max_files]
+        
+        prompt = f"""Based on the following issue analysis, generate code suggestions:
+
+Issue Type: {issue_type}
+Requirements:
+{chr(10).join('- ' + req for req in limited_requirements)}
+
+Relevant files: {', '.join(limited_files) if limited_files else 'None identified'}
+
+Please provide specific code changes or new code that would address these requirements."""
+
+        # Detect primary language from project
+        language = None
+        if context.project_analysis:
+            languages = context.project_analysis.get("languages", {})
+            if languages:
+                language = max(languages.items(), key=lambda x: x[1])[0]
+        
+        response = self._llm_provider.generate_code(
+            prompt=prompt,
+            language=language,
+        )
+        
+        # Track usage
+        if response.usage:
+            context.llm_context.add_usage(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                cost=response.usage.estimated_cost,
+            )
+        
+        context.llm_context.responses.append({
+            "type": "code_suggestion",
+            "content": response.content,
+            "model": response.model,
+        })
+        
+        return {
+            "content": response.content,
+            "model": response.model,
+            "language": language,
+            "tokens_used": response.usage.total_tokens if response.usage else 0,
+        }
     
     def _generate_proposed_changes(self, context: AgentContext) -> list:
         """Generate list of proposed code changes."""

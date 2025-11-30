@@ -5,7 +5,7 @@ Orchestrator - Chains agents together to solve issues.
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from .agents import AgentContext, BaseAgent
 from .agents.project_analyzer import ProjectAnalyzer
@@ -22,18 +22,29 @@ class AgenticChain:
     Orchestrates a chain of agents to analyze projects, understand issues,
     review code, and propose solutions.
     
+    Supports LLM integration for intelligent code generation.
+    
     Example usage:
+        # Basic usage (static analysis)
         chain = AgenticChain(project_path="/path/to/project")
         result = chain.solve_issue({
             "title": "Bug in login",
             "body": "Users cannot login when..."
         })
+        
+        # With LLM integration
+        from agentic_chain import LLMFactory
+        llm = LLMFactory.create("openai", model="gpt-4")
+        chain = AgenticChain(project_path="/path/to/project", llm_provider=llm)
+        result = chain.solve_issue(issue_data)
     """
     
     def __init__(
         self,
         project_path: str,
         custom_agents: Optional[list] = None,
+        llm_provider: Optional["LLMProvider"] = None,
+        llm_config: Optional[dict] = None,
     ):
         """
         Initialize the agentic chain.
@@ -41,16 +52,31 @@ class AgenticChain:
         Args:
             project_path: Path to the project to analyze.
             custom_agents: Optional list of custom agents to include.
+            llm_provider: Optional LLM provider for AI-powered generation.
+            llm_config: Optional dict to create LLM provider. Keys:
+                - provider: "openai" or "anthropic"
+                - model: Model name (optional)
+                - api_key: API key (optional, uses env var if not set)
         """
         self.project_path = Path(project_path).resolve()
         self.context = AgentContext(project_path=str(self.project_path))
+        
+        # Set up LLM provider
+        self._llm_provider = llm_provider
+        if not self._llm_provider and llm_config:
+            self._llm_provider = self._create_llm_from_config(llm_config)
+        
+        # Create solution implementer with LLM if available
+        solution_implementer = SolutionImplementer()
+        if self._llm_provider:
+            solution_implementer.llm_provider = self._llm_provider
         
         # Default agent pipeline
         self.agents = [
             ProjectAnalyzer(),
             IssueAnalyzer(),
             CodeReviewer(),
-            SolutionImplementer(),
+            solution_implementer,
         ]
         
         # Add custom agents if provided
@@ -60,6 +86,29 @@ class AgenticChain:
                     self.agents.append(agent)
                     
         self._executed = False
+    
+    def _create_llm_from_config(self, config: dict) -> Optional["LLMProvider"]:
+        """Create LLM provider from config dict."""
+        try:
+            from .llm import LLMFactory
+            return LLMFactory.create(**config)
+        except Exception as e:
+            logger.warning(f"Failed to create LLM provider: {e}")
+            return None
+    
+    @property
+    def llm_provider(self) -> Optional["LLMProvider"]:
+        """Get the LLM provider."""
+        return self._llm_provider
+    
+    @llm_provider.setter
+    def llm_provider(self, provider: "LLMProvider"):
+        """Set the LLM provider and update agents."""
+        self._llm_provider = provider
+        # Update SolutionImplementer with new provider
+        for agent in self.agents:
+            if isinstance(agent, SolutionImplementer):
+                agent.llm_provider = provider
         
     def add_agent(self, agent: BaseAgent, position: Optional[int] = None):
         """
@@ -107,6 +156,8 @@ class AgenticChain:
         self.context.issue_data = issue_data
         
         logger.info(f"Starting agentic chain for issue: {issue_data.get('title', 'Unknown')}")
+        if self._llm_provider:
+            logger.info(f"LLM enabled: {self._llm_provider.config.provider}/{self._llm_provider.config.model}")
         
         for agent in self.agents:
             logger.info(f"Executing agent: {agent.name}")
@@ -139,6 +190,15 @@ class AgenticChain:
             Dictionary containing all analysis and solution data.
         """
         return self.context.to_dict()
+    
+    def get_llm_usage(self) -> dict:
+        """
+        Get LLM usage statistics.
+        
+        Returns:
+            Dictionary with usage information.
+        """
+        return self.context.llm_context.to_dict()
     
     def get_solution_summary(self) -> str:
         """
@@ -191,6 +251,10 @@ class AgenticChain:
             lines.append("\n💡 PROPOSED SOLUTION")
             lines.append("-" * 40)
             
+            # Show if LLM was used
+            if solution.get("llm_generated"):
+                lines.append("✨ AI-generated solution")
+            
             if solution.get("implementation_plan"):
                 plan = solution["implementation_plan"]
                 lines.append(f"Complexity: {plan.get('complexity', 'N/A')}")
@@ -205,6 +269,16 @@ class AgenticChain:
                 lines.append("\nRisks:")
                 for risk in solution["risks"]:
                     lines.append(f"  • [{risk.get('level', 'N/A')}] {risk.get('description', '')[:60]}")
+        
+        # LLM Usage
+        llm_usage = result.get("llm_usage", {})
+        if llm_usage.get("total_tokens", 0) > 0:
+            lines.append("\n🤖 LLM USAGE")
+            lines.append("-" * 40)
+            lines.append(f"Provider: {llm_usage.get('provider', 'N/A')}")
+            lines.append(f"Model: {llm_usage.get('model', 'N/A')}")
+            lines.append(f"Total tokens: {llm_usage.get('total_tokens', 0)}")
+            lines.append(f"Estimated cost: ${llm_usage.get('estimated_cost', 0):.4f}")
                     
         lines.append("\n" + "=" * 60)
         
@@ -225,4 +299,7 @@ class AgenticChain:
         
     def __repr__(self) -> str:
         agent_names = [a.name for a in self.agents]
-        return f"AgenticChain(project='{self.project_path}', agents={agent_names})"
+        llm_info = ""
+        if self._llm_provider:
+            llm_info = f", llm={self._llm_provider.config.provider}"
+        return f"AgenticChain(project='{self.project_path}', agents={agent_names}{llm_info})"
