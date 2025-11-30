@@ -9,6 +9,7 @@ Key Features:
 - Similar issue detection
 - Sentiment analysis for urgency detection
 - Auto-labeling suggestions
+- GitHub integration for automated issue processing
 This package provides an agentic chain that can understand project context,
 analyze issues, review code, and implement solutions in external projects.
 
@@ -36,6 +37,14 @@ from .llm import (
     AnthropicProvider,
 )
 
+# GitHub integration
+from .github_integration import (
+    WebhookHandler,
+    IssueProcessor,
+    CommentFormatter,
+    GitHubConfig,
+)
+
 __version__ = "0.1.0"
 __all__ = [
     # Core chain
@@ -58,4 +67,9 @@ __all__ = [
     "LLMFactory",
     "OpenAIProvider",
     "AnthropicProvider",
+    # GitHub Integration
+    "WebhookHandler",
+    "IssueProcessor",
+    "CommentFormatter",
+    "GitHubConfig",
 ]

@@ -1,0 +1,49 @@
+# Agentic Chain Configuration
+# Place this file in your repository at .github/agentic-chain.yml
+
+# Enable or disable the integration
+enabled: true
+
+# Issue analysis settings
+analysis:
+  # Enable automatic issue analysis
+  enabled: true
+  # Automatically post analysis as a comment
+  auto_comment: true
+  # Automatically add suggested labels
+  auto_label: true
+  # Minimum priority score to trigger auto-actions (1-100)
+  priority_threshold: 50
+
+# @mention bot settings
+mention:
+  # Enable @mention commands
+  enabled: true
+  # The trigger phrase for commands
+  trigger: "@agentic-chain"
+  # Available commands
+  commands:
+    - analyze
+    - help
+    - label
+
+# Label management settings
+labels:
+  # Enable auto-labeling
+  enabled: true
+  # Prefix for auto-added labels (optional)
+  prefix: ""
+  # Maximum number of labels to add
+  max_labels: 5
+  # Map suggested labels to your repository's labels
+  mapping:
+    bug: "type:bug"
+    enhancement: "type:feature"
+    documentation: "type:docs"
+    security: "priority:high"
+    performance: "type:performance"
+
+# LLM settings (optional - requires API key in secrets)
+# llm:
+#   provider: "openai"  # or "anthropic"
+#   model: "gpt-4"      # or "claude-3-sonnet-20240229"
