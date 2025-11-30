@@ -163,19 +163,31 @@ class AnthropicProvider(LLMProvider):
                 # Update total usage
                 self._total_usage = self._total_usage + usage
                 
-                # Extract content
+                # Extract content from response blocks
                 content = ""
                 if response.content:
                     for block in response.content:
-                        if hasattr(block, "text"):
+                        # ContentBlock objects have a 'text' attribute for text content
+                        try:
                             content += block.text
+                        except AttributeError:
+                            # Skip non-text blocks
+                            pass
+                
+                # Serialize raw response if supported (Pydantic v2+)
+                raw_response = None
+                try:
+                    raw_response = response.model_dump()
+                except AttributeError:
+                    # Fallback for older versions
+                    pass
                 
                 return LLMResponse(
                     content=content,
                     model=response.model,
                     usage=usage,
                     finish_reason=response.stop_reason,
-                    raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+                    raw_response=raw_response,
                 )
                 
             except Exception as e:

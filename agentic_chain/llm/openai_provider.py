@@ -127,12 +127,20 @@ class OpenAIProvider(LLMProvider):
                 content = choice.message.content if choice and choice.message else ""
                 finish_reason = choice.finish_reason if choice else None
                 
+                # Serialize raw response if supported (Pydantic v2+)
+                raw_response = None
+                try:
+                    raw_response = response.model_dump()
+                except AttributeError:
+                    # Fallback for older versions
+                    pass
+                
                 return LLMResponse(
                     content=content,
                     model=response.model,
                     usage=usage,
                     finish_reason=finish_reason,
-                    raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+                    raw_response=raw_response,
                 )
                 
             except Exception as e:

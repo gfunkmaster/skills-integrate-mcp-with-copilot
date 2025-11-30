@@ -15,6 +15,11 @@ from . import BaseAgent, AgentContext
 logger = logging.getLogger(__name__)
 
 
+# Default limits for LLM prompt construction
+DEFAULT_MAX_REQUIREMENTS = 5
+DEFAULT_MAX_FILES = 5
+
+
 class SolutionImplementer(BaseAgent):
     """
     Generates solution proposals and implementation plans based on
@@ -28,6 +33,8 @@ class SolutionImplementer(BaseAgent):
         self,
         name: str = "SolutionImplementer",
         llm_provider: Optional["LLMProvider"] = None,
+        max_requirements: int = DEFAULT_MAX_REQUIREMENTS,
+        max_files: int = DEFAULT_MAX_FILES,
     ):
         """
         Initialize the SolutionImplementer.
@@ -35,9 +42,13 @@ class SolutionImplementer(BaseAgent):
         Args:
             name: Agent name.
             llm_provider: Optional LLM provider for AI-powered generation.
+            max_requirements: Maximum number of requirements to include in LLM prompts.
+            max_files: Maximum number of files to include in LLM prompts.
         """
         super().__init__(name)
         self._llm_provider = llm_provider
+        self.max_requirements = max_requirements
+        self.max_files = max_files
         
     @property
     def llm_provider(self):
@@ -160,13 +171,17 @@ class SolutionImplementer(BaseAgent):
         requirements = issue_analysis.get("requirements", [])
         relevant_files = code_review.get("relevant_files", [])
         
+        # Use configurable limits
+        limited_requirements = requirements[:self.max_requirements]
+        limited_files = relevant_files[:self.max_files]
+        
         prompt = f"""Based on the following issue analysis, generate code suggestions:
 
 Issue Type: {issue_type}
 Requirements:
-{chr(10).join('- ' + req for req in requirements[:5])}
+{chr(10).join('- ' + req for req in limited_requirements)}
 
-Relevant files: {', '.join(relevant_files[:5]) if relevant_files else 'None identified'}
+Relevant files: {', '.join(limited_files) if limited_files else 'None identified'}
 
 Please provide specific code changes or new code that would address these requirements."""
 

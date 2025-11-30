@@ -48,10 +48,17 @@ Examples:
         """
     )
     
+    # Get available providers dynamically
+    try:
+        from .llm import LLMFactory
+        available_providers = LLMFactory.list_providers()
+    except ImportError:
+        available_providers = ["openai", "anthropic"]  # Fallback
+    
     # Global LLM options
     parser.add_argument(
         "--llm",
-        choices=["openai", "anthropic"],
+        choices=available_providers,
         help="LLM provider to use for AI-powered solutions"
     )
     parser.add_argument(

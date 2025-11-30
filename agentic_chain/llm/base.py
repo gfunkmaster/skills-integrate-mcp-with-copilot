@@ -322,6 +322,10 @@ Output only the code with no additional explanation unless asked."""
         """
         Calculate estimated cost for the request.
         
+        Note: Pricing is approximate and may change. Override this method
+        or set custom pricing via config.extra_options['pricing'] for
+        more accurate cost tracking.
+        
         Args:
             prompt_tokens: Number of input tokens.
             completion_tokens: Number of output tokens.
@@ -330,8 +334,11 @@ Output only the code with no additional explanation unless asked."""
         Returns:
             Estimated cost in USD.
         """
-        # Pricing per 1000 tokens (approximate)
-        pricing = {
+        # Check for custom pricing in config
+        custom_pricing = self.config.extra_options.get("pricing", {})
+        
+        # Default pricing per 1000 tokens (approximate, may change)
+        default_pricing = {
             # OpenAI
             "gpt-4": (0.03, 0.06),
             "gpt-4-turbo": (0.01, 0.03),
@@ -343,6 +350,9 @@ Output only the code with no additional explanation unless asked."""
             "claude-3-sonnet": (0.003, 0.015),
             "claude-3-haiku": (0.00025, 0.00125),
         }
+        
+        # Merge with custom pricing
+        pricing = {**default_pricing, **custom_pricing}
         
         # Find matching pricing
         for model_prefix, (input_price, output_price) in pricing.items():
