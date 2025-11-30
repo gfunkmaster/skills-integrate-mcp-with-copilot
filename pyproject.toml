@@ -5,19 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentic-chain"
 version = "0.1.0"
-description = "An AI-powered agentic chain framework for solving issues in software projects"
+description = "The fastest way to get AI-powered insights on GitHub issues - under 5 seconds, zero configuration"
 readme = "agentic_chain/README.md"
 license = {text = "MIT"}
 authors = [
     {name = "Skills Integrate MCP", email = "example@example.com"}
 ]
 keywords = [
-    "ai",
-    "agent",
-    "automation",
-    "issue-solver",
-    "code-review",
-    "project-analysis",
+    "github",
+    "issues",
+    "triage",
+    "lightweight",
+    "fast",
+    "issue-analysis",
+    "priority-scoring",
+    "auto-labeling",
+    "sentiment-analysis",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -31,6 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Bug Tracking",
 ]
 requires-python = ">=3.8"
 dependencies = []
