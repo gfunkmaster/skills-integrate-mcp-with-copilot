@@ -1,9 +1,12 @@
 """
 Issue Analyzer Agent - Parses and understands issues to extract actionable requirements.
+
+This is the core component of Agentic Chain's GitHub-first lightweight issue analysis,
+designed to provide insights in under 5 seconds with zero configuration.
 """
 
 import re
-from typing import Optional
+from typing import Optional, List, Dict
 
 from . import BaseAgent, AgentContext
 
@@ -11,8 +14,22 @@ from . import BaseAgent, AgentContext
 class IssueAnalyzer(BaseAgent):
     """
     Analyzes issues to understand requirements, affected areas,
-    and priority for resolution.
+    priority, sentiment, and provides labeling suggestions.
+    
+    Key features:
+    - Instant issue classification (< 5 seconds)
+    - Priority scoring algorithm
+    - Sentiment analysis for urgency detection
+    - Auto-labeling suggestions
+    
+    Attributes:
+        MIN_PRIORITY_SCORE: Minimum priority score value (default 1)
+        MAX_PRIORITY_SCORE: Maximum priority score value (default 100)
     """
+    
+    # Priority score bounds as class constants
+    MIN_PRIORITY_SCORE = 1
+    MAX_PRIORITY_SCORE = 100
     
     def __init__(self, name: str = "IssueAnalyzer"):
         super().__init__(name)
@@ -30,15 +47,156 @@ class IssueAnalyzer(BaseAgent):
             "title": issue.get("title", ""),
             "issue_type": self._classify_issue(issue),
             "priority": self._determine_priority(issue),
+            "priority_score": self._calculate_priority_score(issue),
             "affected_files": self._extract_file_references(issue),
             "requirements": self._extract_requirements(issue),
             "acceptance_criteria": self._extract_acceptance_criteria(issue),
             "keywords": self._extract_keywords(issue),
             "related_components": self._identify_components(issue, context),
+            "sentiment": self._analyze_sentiment(issue),
+            "suggested_labels": self._suggest_labels(issue),
         }
         
         context.issue_analysis = analysis
         return context
+    
+    def _calculate_priority_score(self, issue: dict) -> int:
+        """
+        Calculate a numeric priority score from 1-100.
+        Higher scores indicate higher priority.
+        """
+        score = 50  # Base score
+        
+        title = issue.get("title", "").lower()
+        body = issue.get("body", "").lower()
+        labels = [l.get("name", "").lower() for l in issue.get("labels", [])]
+        content = f"{title} {body}"
+        
+        # Label-based scoring
+        label_scores = {
+            "critical": 40, "urgent": 35, "blocker": 40, "security": 35,
+            "high": 25, "important": 20, "p0": 40, "p1": 25,
+            "medium": 0, "p2": 0, "normal": 0,
+            "low": -20, "p3": -15, "minor": -15, "nice-to-have": -20,
+        }
+        
+        for label in labels:
+            for key, value in label_scores.items():
+                if key in label:
+                    score += value
+                    break
+        
+        # Content-based scoring
+        urgent_phrases = [
+            "asap", "urgent", "critical", "breaking", "down", "outage",
+            "production", "customers affected", "data loss", "security vulnerability"
+        ]
+        for phrase in urgent_phrases:
+            if phrase in content:
+                score += 15
+        
+        # Sentiment-based adjustment
+        negative_words = ["crash", "broken", "fail", "error", "bug", "issue", "problem"]
+        for word in negative_words:
+            if word in content:
+                score += 5
+        
+        # Ensure score is within bounds
+        return max(self.MIN_PRIORITY_SCORE, min(self.MAX_PRIORITY_SCORE, score))
+    
+    def _analyze_sentiment(self, issue: dict) -> Dict:
+        """
+        Analyze the sentiment and urgency of the issue text.
+        Returns urgency level and tone indicators.
+        """
+        title = issue.get("title", "").lower()
+        body = issue.get("body", "").lower()
+        content = f"{title} {body}"
+        
+        # Urgency indicators
+        high_urgency_words = [
+            "urgent", "asap", "immediately", "critical", "emergency",
+            "blocking", "production", "outage", "down", "broken"
+        ]
+        medium_urgency_words = [
+            "soon", "important", "needed", "please", "help", "stuck"
+        ]
+        
+        urgency_score = 0
+        urgency_indicators = []
+        
+        for word in high_urgency_words:
+            if word in content:
+                urgency_score += 2
+                urgency_indicators.append(word)
+        
+        for word in medium_urgency_words:
+            if word in content:
+                urgency_score += 1
+                urgency_indicators.append(word)
+        
+        # Frustration indicators
+        frustration_words = [
+            "frustrated", "annoying", "terrible", "awful", "waste",
+            "hours", "days", "tried everything", "nothing works"
+        ]
+        frustration_score = sum(1 for word in frustration_words if word in content)
+        
+        # Determine urgency level
+        if urgency_score >= 4:
+            urgency_level = "high"
+        elif urgency_score >= 2:
+            urgency_level = "medium"
+        else:
+            urgency_level = "low"
+        
+        return {
+            "urgency_level": urgency_level,
+            "urgency_score": urgency_score,
+            "urgency_indicators": urgency_indicators[:5],
+            "frustration_detected": frustration_score >= 2,
+            "tone": "urgent" if urgency_score >= 3 else "frustrated" if frustration_score >= 2 else "neutral"
+        }
+    
+    def _suggest_labels(self, issue: dict) -> List[str]:
+        """
+        Suggest appropriate labels for the issue based on content analysis.
+        """
+        suggestions = []
+        title = issue.get("title", "").lower()
+        body = issue.get("body", "").lower()
+        content = f"{title} {body}"
+        
+        # Type-based labels
+        if any(word in content for word in ["bug", "error", "crash", "broken", "fail"]):
+            suggestions.append("bug")
+        if any(word in content for word in ["feature", "add", "implement", "new", "request"]):
+            suggestions.append("enhancement")
+        if any(word in content for word in ["docs", "documentation", "readme", "guide", "tutorial"]):
+            suggestions.append("documentation")
+        if any(word in content for word in ["security", "vulnerability", "exploit", "cve"]):
+            suggestions.append("security")
+        if any(word in content for word in ["performance", "slow", "optimize", "speed", "memory"]):
+            suggestions.append("performance")
+        
+        # Priority-based labels
+        sentiment = self._analyze_sentiment(issue)
+        if sentiment["urgency_level"] == "high":
+            suggestions.append("priority:high")
+        elif sentiment["urgency_level"] == "medium":
+            suggestions.append("priority:medium")
+        
+        # Component-based labels
+        if any(word in content for word in ["api", "endpoint", "rest", "graphql"]):
+            suggestions.append("api")
+        if any(word in content for word in ["ui", "frontend", "css", "design", "layout"]):
+            suggestions.append("frontend")
+        if any(word in content for word in ["database", "sql", "query", "migration"]):
+            suggestions.append("database")
+        if any(word in content for word in ["test", "testing", "coverage", "spec"]):
+            suggestions.append("testing")
+        
+        return list(set(suggestions))[:8]  # Return unique suggestions, max 8
     
     def _classify_issue(self, issue: dict) -> str:
         """Classify the issue type."""

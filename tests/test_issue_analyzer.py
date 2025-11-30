@@ -167,3 +167,79 @@ class TestIssueAnalyzer:
         components = result.issue_analysis["related_components"]
         assert any("Python" in c for c in components)
         assert any("FastAPI" in c for c in components)
+        
+    def test_analyze_sentiment_high_urgency(self, tmp_path):
+        """Test sentiment analysis with high urgency issue."""
+        context = AgentContext(project_path=str(tmp_path))
+        context.issue_data = {
+            "title": "URGENT: Production is down!",
+            "body": "Critical issue - our production server is broken. Need fix immediately!",
+            "labels": []
+        }
+        
+        result = self.analyzer.execute(context)
+        sentiment = result.issue_analysis["sentiment"]
+        
+        assert sentiment["urgency_level"] == "high"
+        assert sentiment["urgency_score"] >= 4
+        assert "urgent" in sentiment["urgency_indicators"] or "critical" in sentiment["urgency_indicators"]
+        
+    def test_analyze_sentiment_low_urgency(self, tmp_path):
+        """Test sentiment analysis with low urgency issue."""
+        context = AgentContext(project_path=str(tmp_path))
+        context.issue_data = {
+            "title": "Add dark mode option",
+            "body": "It would be nice to have a dark mode for the application.",
+            "labels": []
+        }
+        
+        result = self.analyzer.execute(context)
+        sentiment = result.issue_analysis["sentiment"]
+        
+        assert sentiment["urgency_level"] == "low"
+        assert sentiment["tone"] == "neutral"
+        
+    def test_calculate_priority_score(self, tmp_path):
+        """Test priority score calculation."""
+        context = AgentContext(project_path=str(tmp_path))
+        context.issue_data = {
+            "title": "Critical security vulnerability",
+            "body": "This is urgent and affects production",
+            "labels": [{"name": "critical"}, {"name": "security"}]
+        }
+        
+        result = self.analyzer.execute(context)
+        priority_score = result.issue_analysis["priority_score"]
+        
+        assert priority_score >= 80  # High priority score expected
+        assert priority_score <= 100
+        
+    def test_suggest_labels_for_bug(self, tmp_path):
+        """Test label suggestions for bug issues."""
+        context = AgentContext(project_path=str(tmp_path))
+        context.issue_data = {
+            "title": "Application crashes on login",
+            "body": "The app crashes with an error when trying to login. This bug affects the API endpoint.",
+            "labels": []
+        }
+        
+        result = self.analyzer.execute(context)
+        suggested_labels = result.issue_analysis["suggested_labels"]
+        
+        assert "bug" in suggested_labels
+        assert "api" in suggested_labels
+        
+    def test_suggest_labels_for_feature(self, tmp_path):
+        """Test label suggestions for feature requests."""
+        context = AgentContext(project_path=str(tmp_path))
+        context.issue_data = {
+            "title": "Add new user profile page",
+            "body": "We need to implement a new feature for user profiles with UI improvements.",
+            "labels": []
+        }
+        
+        result = self.analyzer.execute(context)
+        suggested_labels = result.issue_analysis["suggested_labels"]
+        
+        assert "enhancement" in suggested_labels
+        assert "frontend" in suggested_labels
