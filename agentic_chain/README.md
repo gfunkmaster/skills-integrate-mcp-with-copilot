@@ -8,6 +8,7 @@ An AI-powered agentic chain framework for solving issues in software projects. T
 - **Issue Analysis**: Parse and classify issues to extract actionable requirements
 - **Code Review**: Identify relevant files and potential code quality issues
 - **Solution Implementation**: Generate detailed implementation plans with risk assessment
+- **LLM Integration**: Use AI-powered code generation with OpenAI or Anthropic
 
 ## Installation
 
@@ -23,9 +24,16 @@ cd integrate-mcp-with-copilot
 pip install -e .
 ```
 
+For LLM support, install the optional dependencies:
+
+```bash
+pip install openai      # For OpenAI support
+pip install anthropic   # For Anthropic Claude support
+```
+
 ## Quick Start
 
-### Python API
+### Basic Usage (Static Analysis)
 
 ```python
 from agentic_chain import AgenticChain
@@ -50,6 +58,44 @@ print(chain.get_solution_summary())
 chain.export_result("solution.json")
 ```
 
+### With LLM Integration (AI-Powered Solutions)
+
+```python
+from agentic_chain import AgenticChain, LLMFactory
+
+# Create an LLM provider (uses OPENAI_API_KEY env var)
+llm = LLMFactory.create("openai", model="gpt-4")
+
+# Or use Anthropic Claude (uses ANTHROPIC_API_KEY env var)
+# llm = LLMFactory.create("anthropic", model="claude-3-sonnet-20240229")
+
+# Initialize the chain with LLM support
+chain = AgenticChain(
+    project_path="/path/to/your/project",
+    llm_provider=llm
+)
+
+# Solve an issue with AI-generated code suggestions
+result = chain.solve_issue(issue)
+
+# View LLM usage statistics
+print(chain.get_llm_usage())
+# {'provider': 'openai', 'model': 'gpt-4', 'total_tokens': 1500, 'estimated_cost': 0.045}
+```
+
+### Alternative: Configure LLM via Dictionary
+
+```python
+chain = AgenticChain(
+    project_path="/path/to/project",
+    llm_config={
+        "provider": "openai",
+        "model": "gpt-4",
+        "api_key": "your-api-key",  # Optional: uses env var if not set
+    }
+)
+```
+
 ### Command Line Interface
 
 ```bash
@@ -62,8 +108,20 @@ agentic-chain solve /path/to/project --issue-file issue.json --summary
 # Solve an issue with inline data
 agentic-chain solve /path/to/project --title "Fix login bug" --body "Users cannot login..."
 
+# Use LLM for AI-powered solutions
+agentic-chain solve /path/to/project --issue-file issue.json --llm openai --summary
+
+# Use a specific model
+agentic-chain solve /path/to/project --issue-file issue.json --llm anthropic --model claude-3-sonnet-20240229
+
+# Show LLM token usage
+agentic-chain solve /path/to/project --issue-file issue.json --llm openai --show-usage
+
 # Export results
 agentic-chain solve /path/to/project --issue-file issue.json --output result.json
+
+# List available LLM providers
+agentic-chain providers
 ```
 
 ## Architecture
@@ -104,6 +162,60 @@ Generates solutions including:
 - Test strategy and coverage requirements
 - Documentation updates needed
 - Risk assessment and mitigation strategies
+- **AI-generated code suggestions** (when LLM is enabled)
+- **AI-powered implementation plans** (when LLM is enabled)
+
+## LLM Integration
+
+The framework supports multiple LLM providers for intelligent code generation:
+
+### Supported Providers
+
+| Provider | Models | Environment Variable |
+|----------|--------|---------------------|
+| OpenAI | gpt-4, gpt-4-turbo, gpt-3.5-turbo | `OPENAI_API_KEY` |
+| Anthropic | claude-3-opus, claude-3-sonnet, claude-3-haiku | `ANTHROPIC_API_KEY` |
+
+### Features
+
+- **Streaming responses**: Get output as it's generated
+- **Token tracking**: Monitor usage and estimated costs
+- **Automatic retries**: Handle rate limits gracefully
+- **Fallback mechanism**: Works without LLM (static analysis)
+
+### Usage Tracking
+
+```python
+from agentic_chain import AgenticChain, LLMFactory
+
+llm = LLMFactory.create("openai")
+chain = AgenticChain(project_path="/project", llm_provider=llm)
+chain.solve_issue(issue)
+
+# Get usage stats
+usage = chain.get_llm_usage()
+print(f"Tokens used: {usage['total_tokens']}")
+print(f"Estimated cost: ${usage['estimated_cost']:.4f}")
+```
+
+### Custom LLM Provider
+
+```python
+from agentic_chain.llm import LLMProvider, LLMConfig, LLMResponse, LLMMessage
+
+class CustomProvider(LLMProvider):
+    def complete(self, messages: list[LLMMessage], **kwargs) -> LLMResponse:
+        # Your implementation
+        pass
+    
+    def stream(self, messages: list[LLMMessage], **kwargs):
+        # Your implementation
+        pass
+
+# Register the provider
+from agentic_chain.llm import LLMFactory
+LLMFactory.register_provider("custom", CustomProvider)
+```
 
 ## Custom Agents
 
@@ -155,7 +267,16 @@ The chain produces a comprehensive result containing:
         "proposed_changes": [ ... ],
         "implementation_plan": { ... },
         "test_strategy": { ... },
-        "risks": [ ... ]
+        "risks": [ ... ],
+        "llm_generated": true,
+        "ai_implementation_plan": { ... },
+        "code_suggestions": { ... }
+    },
+    "llm_usage": {
+        "provider": "openai",
+        "model": "gpt-4",
+        "total_tokens": 1500,
+        "estimated_cost": 0.045
     }
 }
 ```
@@ -163,6 +284,7 @@ The chain produces a comprehensive result containing:
 ## Use Cases
 
 - **Automated Issue Triage**: Classify and prioritize incoming issues
+- **AI-Powered Code Generation**: Generate actual code solutions
 - **Code Review Automation**: Identify areas needing attention
 - **Sprint Planning**: Estimate complexity and effort for issues
 - **Onboarding**: Help new developers understand project structure
