@@ -8,6 +8,43 @@ from typing import Any, Optional
 
 
 @dataclass
+class LLMContext:
+    """LLM-related context for tracking usage and responses."""
+    
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost: float = 0.0
+    responses: list = field(default_factory=list)
+    
+    def add_usage(
+        self,
+        prompt_tokens: int,
+        completion_tokens: int,
+        cost: float = 0.0,
+    ):
+        """Add usage from a request."""
+        self.total_prompt_tokens += prompt_tokens
+        self.total_completion_tokens += completion_tokens
+        self.total_tokens += prompt_tokens + completion_tokens
+        self.estimated_cost += cost
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary format."""
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "total_prompt_tokens": self.total_prompt_tokens,
+            "total_completion_tokens": self.total_completion_tokens,
+            "total_tokens": self.total_tokens,
+            "estimated_cost": self.estimated_cost,
+            "response_count": len(self.responses),
+        }
+
+
+@dataclass
 class AgentContext:
     """Shared context that agents can read from and write to."""
     
@@ -18,6 +55,7 @@ class AgentContext:
     code_review: Optional[dict] = None
     solution: Optional[dict] = None
     metadata: dict = field(default_factory=dict)
+    llm_context: LLMContext = field(default_factory=LLMContext)
     
     def to_dict(self) -> dict:
         """Convert context to dictionary."""
@@ -29,6 +67,7 @@ class AgentContext:
             "code_review": self.code_review,
             "solution": self.solution,
             "metadata": self.metadata,
+            "llm_usage": self.llm_context.to_dict(),
         }
 
 
