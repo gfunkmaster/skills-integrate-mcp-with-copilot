@@ -164,7 +164,7 @@ agentic-chain providers
 
 ## Architecture
 
-The Agentic Chain consists of four main agents:
+The Agentic Chain consists of four main agents, all supporting optional LLM integration:
 
 ### 1. ProjectAnalyzer
 
@@ -174,6 +174,7 @@ Analyzes the project to understand:
 - Dependencies (Python, JavaScript, Go)
 - Frameworks and patterns (FastAPI, React, etc.)
 - Configuration files and CI/CD setup
+- **AI-powered architectural insights** (when LLM is enabled)
 
 ### 2. IssueAnalyzer
 
@@ -183,6 +184,9 @@ Parses issues to extract:
 - Affected files mentioned in the issue
 - Requirements and acceptance criteria
 - Keywords for context understanding
+- **AI-powered issue classification** (when LLM is enabled)
+- **Complexity and effort estimates** (when LLM is enabled)
+- **Suggested implementation approach** (when LLM is enabled)
 
 ### 3. CodeReviewer
 
@@ -191,6 +195,8 @@ Reviews code to identify:
 - Code quality metrics (tests, docs, type hints)
 - Potential issues (TODOs, FIXMEs, etc.)
 - Improvement suggestions
+- **AI-powered code review feedback** (when LLM is enabled)
+- **Security and performance suggestions** (when LLM is enabled)
 
 ### 4. SolutionImplementer
 
@@ -205,7 +211,7 @@ Generates solutions including:
 
 ## LLM Integration
 
-The framework supports multiple LLM providers for intelligent code generation:
+The framework supports multiple LLM providers for intelligent analysis across all agents:
 
 ### Supported Providers
 
