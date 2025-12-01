@@ -285,7 +285,7 @@ class WebhookHandler:
         return {
             "number": issue.get("number"),
             "title": issue.get("title", ""),
-            "body": issue.get("body", "") or "",
+            "body": issue.get("body") or "",
             "labels": issue.get("labels", []),
             "state": issue.get("state"),
             "user": issue.get("user", {}).get("login"),

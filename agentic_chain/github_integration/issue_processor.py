@@ -274,7 +274,8 @@ class IssueProcessor:
         existing_labels = [
             l.get("name", "").lower() for l in issue_data.get("labels", [])
         ]
-        if "agentic-chain-analyzed" in existing_labels:
+        analysis_label = self.get_analysis_label().lower()
+        if analysis_label in existing_labels:
             return False
 
         return True
