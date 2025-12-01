@@ -1,12 +1,14 @@
 """
 Orchestrator - Chains agents together to solve issues.
+
+Supports both sequential and parallel execution modes for optimal performance.
 """
 
 import json
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from .agents import AgentContext, BaseAgent
 from .agents.project_analyzer import ProjectAnalyzer
@@ -36,6 +38,14 @@ from .observability import (
     AgentStep,
     ObservabilityData,
 )
+from .parallel import (
+    ExecutionMode,
+    ParallelExecutionConfig,
+    ParallelExecutionResult,
+    ParallelExecutor,
+    DependencyGraph,
+    create_default_dependency_graph,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +59,7 @@ class AgenticChain:
     Supports LLM integration for intelligent code generation.
     Includes comprehensive observability with tracing, metrics, and logging.
     Supports interactive mode for human-in-the-loop processing.
+    Supports both sequential and parallel execution modes for optimal performance.
     
     Example usage:
         # Basic usage (static analysis)
@@ -73,6 +84,13 @@ class AgenticChain:
         chain = AgenticChain(project_path="/path/to/project", interactive=True)
         result = chain.solve_issue(issue_data)
         history = chain.get_interaction_history()
+        # With parallel execution
+        chain = AgenticChain(
+            project_path="/path/to/project",
+            execution_mode=ExecutionMode.PARALLEL,
+            parallel_config=ParallelExecutionConfig(max_workers=4),
+        )
+        result = chain.solve_issue(issue_data)
     """
     
     def __init__(
@@ -85,6 +103,9 @@ class AgenticChain:
         tracer_config: Optional[TracerConfig] = None,
         interactive: bool = False,
         interaction_handler: Optional[InteractionHandler] = None,
+        execution_mode: ExecutionMode = ExecutionMode.SEQUENTIAL,
+        parallel_config: Optional[ParallelExecutionConfig] = None,
+        progress_callback: Optional[Callable[[str, str, float], None]] = None,
     ):
         """
         Initialize the agentic chain.
@@ -101,6 +122,10 @@ class AgenticChain:
             tracer_config: Optional configuration for the tracer.
             interactive: Whether to enable interactive mode.
             interaction_handler: Custom interaction handler (defaults to ConsoleInteractionHandler).
+            execution_mode: Sequential or parallel execution mode.
+            parallel_config: Configuration for parallel execution.
+            progress_callback: Optional callback(agent_name, status, progress)
+                              for progress tracking during parallel execution.
         """
         self.project_path = Path(project_path).resolve()
         
@@ -123,6 +148,12 @@ class AgenticChain:
         self._metrics = MetricsCollector()
         self._current_trace_id: Optional[str] = None
         self._execution_timelines: List[ExecutionTimeline] = []
+        
+        # Parallel execution configuration
+        self._execution_mode = execution_mode
+        self._parallel_config = parallel_config or ParallelExecutionConfig()
+        self._progress_callback = progress_callback
+        self._last_parallel_result: Optional[ParallelExecutionResult] = None
         
         # Set up LLM provider
         self._llm_provider = llm_provider
@@ -327,6 +358,29 @@ class AgenticChain:
             self.context.metadata["solution_modified"] = True
         
         return result.approved
+    def execution_mode(self) -> ExecutionMode:
+        """Get the current execution mode."""
+        return self._execution_mode
+    
+    @execution_mode.setter
+    def execution_mode(self, mode: ExecutionMode):
+        """Set the execution mode."""
+        self._execution_mode = mode
+    
+    @property
+    def parallel_config(self) -> ParallelExecutionConfig:
+        """Get the parallel execution configuration."""
+        return self._parallel_config
+    
+    @parallel_config.setter
+    def parallel_config(self, config: ParallelExecutionConfig):
+        """Set the parallel execution configuration."""
+        self._parallel_config = config
+    
+    @property
+    def last_parallel_result(self) -> Optional[ParallelExecutionResult]:
+        """Get the result of the last parallel execution."""
+        return self._last_parallel_result
         
     def add_agent(self, agent: BaseAgent, position: Optional[int] = None):
         """
@@ -361,6 +415,7 @@ class AgenticChain:
         """
         Run the full agentic chain to solve an issue.
         
+        Supports both sequential and parallel execution modes based on configuration.
         All agent executions are traced and metrics are collected.
         
         Args:
@@ -383,6 +438,7 @@ class AgenticChain:
                 "issue.title": issue_data.get("title", "Unknown"),
                 "issue.number": issue_data.get("number"),
                 "project.path": str(self.project_path),
+                "execution.mode": self._execution_mode.value,
             }
         ) as root_span:
             self._current_trace_id = root_span.trace_id
@@ -390,8 +446,10 @@ class AgenticChain:
             # Create execution timeline
             timeline = ExecutionTimeline(trace_id=root_span.trace_id)
             timeline.metadata["issue_title"] = issue_data.get("title", "Unknown")
+            timeline.metadata["execution_mode"] = self._execution_mode.value
             
             logger.info(f"Starting agentic chain for issue: {issue_data.get('title', 'Unknown')}")
+            logger.info(f"Execution mode: {self._execution_mode.value}")
             if self._llm_provider:
                 logger.info(f"LLM enabled: {self._llm_provider.config.provider}/{self._llm_provider.config.model}")
                 root_span.set_attribute("llm.provider", self._llm_provider.config.provider)
@@ -466,6 +524,11 @@ class AgenticChain:
                         raise
                     finally:
                         timeline.add_step(step)
+            # Execute based on mode
+            if self._execution_mode == ExecutionMode.PARALLEL:
+                chain_success = self._execute_parallel(timeline, root_span)
+            else:
+                chain_success = self._execute_sequential(timeline, root_span)
             
             # Interactive mode: final solution review
             if (
@@ -502,6 +565,141 @@ class AgenticChain:
                 
         self._executed = True
         return self.get_result()
+    
+    def _execute_sequential(self, timeline: ExecutionTimeline, root_span) -> bool:
+        """
+        Execute agents sequentially (original behavior).
+        
+        Args:
+            timeline: The execution timeline to update.
+            root_span: The root tracing span.
+            
+        Returns:
+            True if all agents completed successfully.
+        """
+        chain_success = True
+        for agent in self.agents:
+            start_time = time.perf_counter()
+            
+            # Create span for each agent
+            with self._tracer.start_span(
+                f"agent.{agent.name}",
+                kind=SpanKind.INTERNAL,
+                attributes={
+                    "agent.name": agent.name,
+                    "agent.type": type(agent).__name__,
+                }
+            ) as agent_span:
+                # Create agent step for timeline
+                step = AgentStep(
+                    name=f"agent.{agent.name}",
+                    agent_name=agent.name,
+                    status="running",
+                )
+                step.start_time = agent_span.start_time
+                
+                logger.info(f"Executing agent: {agent.name}")
+                try:
+                    self.context = agent.execute(self.context)
+                    
+                    duration = time.perf_counter() - start_time
+                    agent_span.set_attribute("execution.duration_seconds", duration)
+                    agent_span.set_status(SpanStatus.OK)
+                    
+                    # Update step
+                    step.status = "success"
+                    step.duration_ms = duration * 1000
+                    
+                    # Record metrics
+                    self._metrics.record_execution_time(agent.name, duration, success=True)
+                    
+                    logger.info(f"Agent {agent.name} completed successfully in {duration:.3f}s")
+                    
+                except Exception as e:
+                    duration = time.perf_counter() - start_time
+                    agent_span.record_exception(e)
+                    
+                    # Update step
+                    step.status = "error"
+                    step.error_message = str(e)
+                    step.duration_ms = duration * 1000
+                    
+                    # Record metrics
+                    self._metrics.record_execution_time(agent.name, duration, success=False)
+                    
+                    chain_success = False
+                    logger.error(f"Agent {agent.name} failed: {str(e)}")
+                    raise
+                finally:
+                    timeline.add_step(step)
+        
+        return chain_success
+    
+    def _execute_parallel(self, timeline: ExecutionTimeline, root_span) -> bool:
+        """
+        Execute agents in parallel where dependencies allow.
+        
+        Args:
+            timeline: The execution timeline to update.
+            root_span: The root tracing span.
+            
+        Returns:
+            True if all agents completed successfully.
+        """
+        # Create dependency graph with default dependencies
+        graph = create_default_dependency_graph(self.agents)
+        
+        # Create progress callback that also updates timeline
+        def progress_with_timeline(agent_name: str, status: str, progress: float):
+            step = AgentStep(
+                name=f"agent.{agent_name}",
+                agent_name=agent_name,
+                status=status,
+            )
+            timeline.add_step(step)
+            
+            # Forward to user callback if configured
+            if self._progress_callback:
+                self._progress_callback(agent_name, status, progress)
+        
+        # Create executor
+        executor = ParallelExecutor(
+            config=self._parallel_config,
+            progress_callback=progress_with_timeline,
+        )
+        
+        # Execute
+        logger.info(f"Starting parallel execution with max_workers={self._parallel_config.max_workers}")
+        result = executor.execute(graph, self.context)
+        self._last_parallel_result = result
+        
+        # Record metrics for all agents
+        for agent_name, exec_time in result.agent_times.items():
+            success = agent_name in result.completed_agents
+            self._metrics.record_execution_time(agent_name, exec_time, success=success)
+        
+        # Log results
+        logger.info(f"Parallel execution completed in {result.total_execution_time:.3f}s")
+        logger.info(f"Completed: {result.completed_agents}")
+        if result.failed_agents:
+            logger.error(f"Failed: {result.failed_agents}")
+        if result.skipped_agents:
+            logger.warning(f"Skipped: {result.skipped_agents}")
+        
+        # Add parallel execution metadata to span
+        root_span.set_attribute("parallel.total_time_seconds", result.total_execution_time)
+        root_span.set_attribute("parallel.completed_count", len(result.completed_agents))
+        root_span.set_attribute("parallel.failed_count", len(result.failed_agents))
+        root_span.set_attribute("parallel.skipped_count", len(result.skipped_agents))
+        
+        # Handle failures based on configuration
+        if not result.success and not self._parallel_config.continue_on_partial_failure:
+            failed_info = "; ".join(
+                f"{f['name']}: {f['error']}" for f in result.failed_agents
+            )
+            raise RuntimeError(f"Parallel execution failed: {failed_info}")
+        
+        return result.success
     
     def analyze_project(self) -> dict:
         """

@@ -12,6 +12,7 @@ Key Features:
 - Comprehensive observability with tracing, metrics, and logging
 - GitHub integration for automated issue processing
 - Interactive mode for human-in-the-loop processing
+- Parallel agent execution for improved performance
 This package provides an agentic chain that can understand project context,
 analyze issues, review code, and implement solutions in external projects.
 
@@ -27,6 +28,19 @@ from .agents.solution_implementer import SolutionImplementer
 from .agents.similar_issue_detector import SimilarIssueDetector
 from .agents import AgentContext, LLMContext
 
+# Parallel execution
+from .parallel import (
+    ExecutionMode,
+    ParallelExecutionConfig,
+    ParallelExecutionResult,
+    ParallelExecutor,
+    DependencyGraph,
+    AgentNode,
+    AgentStatus,
+    ThreadSafeContext,
+    create_default_dependency_graph,
+)
+
 # LLM integration
 from .llm import (
     LLMProvider,
@@ -37,6 +51,19 @@ from .llm import (
     LLMFactory,
     OpenAIProvider,
     AnthropicProvider,
+    OllamaProvider,
+    AzureOpenAIProvider,
+    ResponseCache,
+    DiskCache,
+    get_cache,
+    clear_cache,
+    AgenticChainConfig,
+    CacheConfig,
+    CostConfig,
+    PrivacyConfig,
+    load_config,
+    find_config_file,
+    create_default_config_file,
 )
 
 # Observability
@@ -108,6 +135,16 @@ __all__ = [
     # Context
     "AgentContext",
     "LLMContext",
+    # Parallel Execution
+    "ExecutionMode",
+    "ParallelExecutionConfig",
+    "ParallelExecutionResult",
+    "ParallelExecutor",
+    "DependencyGraph",
+    "AgentNode",
+    "AgentStatus",
+    "ThreadSafeContext",
+    "create_default_dependency_graph",
     # LLM
     "LLMProvider",
     "LLMConfig",
@@ -117,6 +154,21 @@ __all__ = [
     "LLMFactory",
     "OpenAIProvider",
     "AnthropicProvider",
+    "OllamaProvider",
+    "AzureOpenAIProvider",
+    # Cache
+    "ResponseCache",
+    "DiskCache",
+    "get_cache",
+    "clear_cache",
+    # Configuration
+    "AgenticChainConfig",
+    "CacheConfig",
+    "CostConfig",
+    "PrivacyConfig",
+    "load_config",
+    "find_config_file",
+    "create_default_config_file",
     # Observability
     "Tracer",
     "Span",
