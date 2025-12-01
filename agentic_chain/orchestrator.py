@@ -104,14 +104,14 @@ class AgenticChain:
         """
         self.project_path = Path(project_path).resolve()
         
-        # Set up interactive mode
+        # Set up interactive mode (lazy initialization - only create handler when needed)
         self._interactive = interactive
         if interaction_handler:
             self._interaction_handler = interaction_handler
         elif interactive:
             self._interaction_handler = ConsoleInteractionHandler(enabled=True)
         else:
-            self._interaction_handler = ConsoleInteractionHandler(enabled=False)
+            self._interaction_handler = None  # No handler created until needed
         
         self.context = AgentContext(
             project_path=str(self.project_path),
@@ -199,7 +199,11 @@ class AgenticChain:
     def interactive(self, value: bool):
         """Enable or disable interactive mode."""
         self._interactive = value
-        if self._interaction_handler:
+        if value and self._interaction_handler is None:
+            # Lazy initialization when enabling interactive mode
+            self._interaction_handler = ConsoleInteractionHandler(enabled=True)
+            self.context.interaction_handler = self._interaction_handler
+        elif self._interaction_handler:
             self._interaction_handler.enabled = value
     
     @property
@@ -433,7 +437,11 @@ class AgenticChain:
                         logger.info(f"Agent {agent.name} completed successfully in {duration:.3f}s")
                         
                         # Interactive mode: request review at key decision points
-                        if self._interactive and self._interaction_handler.enabled:
+                        if (
+                            self._interactive 
+                            and self._interaction_handler is not None
+                            and self._interaction_handler.enabled
+                        ):
                             should_continue = self._handle_agent_interaction(agent)
                             if not should_continue:
                                 user_cancelled = True
@@ -464,6 +472,7 @@ class AgenticChain:
                 chain_success 
                 and not user_cancelled
                 and self._interactive 
+                and self._interaction_handler is not None
                 and self._interaction_handler.enabled
             ):
                 chain_success = self._handle_solution_review()

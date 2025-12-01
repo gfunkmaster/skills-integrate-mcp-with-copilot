@@ -14,6 +14,30 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def parse_datetime(value: Any) -> Optional[datetime]:
+    """
+    Parse a datetime from string or return as-is if already datetime.
+    
+    Handles ISO format strings including 'Z' suffix for UTC.
+    
+    Args:
+        value: String or datetime to parse
+        
+    Returns:
+        Parsed datetime or None
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        # Handle 'Z' suffix for UTC
+        if value.endswith('Z'):
+            value = value[:-1] + '+00:00'
+        return datetime.fromisoformat(value)
+    return None
+
+
 class InteractionType(Enum):
     """Types of interaction points."""
     
@@ -182,18 +206,12 @@ class InteractionResult:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "InteractionResult":
         """Create from dictionary."""
-        timestamp = data.get("timestamp")
-        if timestamp and isinstance(timestamp, str):
-            if timestamp.endswith('Z'):
-                timestamp = timestamp[:-1] + '+00:00'
-            timestamp = datetime.fromisoformat(timestamp)
-        
         return cls(
             approved=data.get("approved", True),
             selected_option=data.get("selected_option"),
             custom_input=data.get("custom_input"),
             feedback=data.get("feedback"),
-            timestamp=timestamp,
+            timestamp=parse_datetime(data.get("timestamp")),
             skipped=data.get("skipped", False),
         )
 
@@ -327,23 +345,11 @@ class InteractionHistory:
             for r in data.get("records", [])
         ]
         
-        started_at = data.get("started_at")
-        if started_at and isinstance(started_at, str):
-            if started_at.endswith('Z'):
-                started_at = started_at[:-1] + '+00:00'
-            started_at = datetime.fromisoformat(started_at)
-        
-        completed_at = data.get("completed_at")
-        if completed_at and isinstance(completed_at, str):
-            if completed_at.endswith('Z'):
-                completed_at = completed_at[:-1] + '+00:00'
-            completed_at = datetime.fromisoformat(completed_at)
-        
         return cls(
             session_id=data.get("session_id"),
             records=records,
-            started_at=started_at,
-            completed_at=completed_at,
+            started_at=parse_datetime(data.get("started_at")),
+            completed_at=parse_datetime(data.get("completed_at")),
             metadata=data.get("metadata", {}),
         )
     
