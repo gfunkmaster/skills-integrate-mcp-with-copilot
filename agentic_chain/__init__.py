@@ -9,6 +9,7 @@ Key Features:
 - Similar issue detection
 - Sentiment analysis for urgency detection
 - Auto-labeling suggestions
+- Comprehensive observability with tracing, metrics, and logging
 - GitHub integration for automated issue processing
 This package provides an agentic chain that can understand project context,
 analyze issues, review code, and implement solutions in external projects.
@@ -37,6 +38,28 @@ from .llm import (
     AnthropicProvider,
 )
 
+# Observability
+from .observability import (
+    Tracer,
+    Span,
+    SpanStatus,
+    SpanKind,
+    TracerConfig,
+    MetricsCollector,
+    MetricType,
+    Metric,
+    StructuredLogger,
+    LogLevel,
+    TraceContext,
+    ContextManager,
+    Exporter,
+    ConsoleExporter,
+    JSONExporter,
+    PrometheusExporter,
+    JaegerExporter,
+    ObservabilityData,
+    ExecutionTimeline,
+    AgentStep,
 # GitHub integration
 from .github_integration import (
     WebhookHandler,
@@ -67,6 +90,27 @@ __all__ = [
     "LLMFactory",
     "OpenAIProvider",
     "AnthropicProvider",
+    # Observability
+    "Tracer",
+    "Span",
+    "SpanStatus",
+    "SpanKind",
+    "TracerConfig",
+    "MetricsCollector",
+    "MetricType",
+    "Metric",
+    "StructuredLogger",
+    "LogLevel",
+    "TraceContext",
+    "ContextManager",
+    "Exporter",
+    "ConsoleExporter",
+    "JSONExporter",
+    "PrometheusExporter",
+    "JaegerExporter",
+    "ObservabilityData",
+    "ExecutionTimeline",
+    "AgentStep",
     # GitHub Integration
     "WebhookHandler",
     "IssueProcessor",
