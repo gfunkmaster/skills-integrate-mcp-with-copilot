@@ -11,6 +11,7 @@ Key Features:
 - Auto-labeling suggestions
 - Comprehensive observability with tracing, metrics, and logging
 - GitHub integration for automated issue processing
+- Interactive mode for human-in-the-loop processing
 This package provides an agentic chain that can understand project context,
 analyze issues, review code, and implement solutions in external projects.
 
@@ -83,6 +84,17 @@ from .memory import (
     SimpleEmbedding,
 )
 
+# Interactive mode
+from .interactive import (
+    InteractionType,
+    InteractionPoint,
+    InteractionOption,
+    InteractionResult,
+    InteractionHistory,
+    InteractionHandler,
+    ConsoleInteractionHandler,
+)
+
 __version__ = "0.1.0"
 __all__ = [
     # Core chain
@@ -141,4 +153,12 @@ __all__ = [
     "SQLiteStorage",
     "EmbeddingProvider",
     "SimpleEmbedding",
+    # Interactive Mode
+    "InteractionType",
+    "InteractionPoint",
+    "InteractionOption",
+    "InteractionResult",
+    "InteractionHistory",
+    "InteractionHandler",
+    "ConsoleInteractionHandler",
 ]

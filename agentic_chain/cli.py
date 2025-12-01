@@ -136,6 +136,16 @@ Examples:
         action="store_true",
         help="Show LLM token usage and cost"
     )
+    solve_parser.add_argument(
+        "-i", "--interactive",
+        action="store_true",
+        help="Enable interactive mode for human-in-the-loop processing"
+    )
+    solve_parser.add_argument(
+        "--show-history",
+        action="store_true",
+        help="Show interaction history after completion (only in interactive mode)"
+    )
     
     # Providers command - list available LLM providers
     providers_parser = subparsers.add_parser(
@@ -336,11 +346,19 @@ def handle_solve(args):
     # Build LLM config
     llm_config = get_llm_config(args)
     
+    # Check for interactive mode
+    interactive = getattr(args, 'interactive', False)
+    
     # Create chain
     chain = AgenticChain(
         project_path=str(project_path),
         llm_config=llm_config,
+        interactive=interactive,
     )
+    
+    if interactive:
+        print("🤝 Interactive mode enabled - you will be prompted for approval at key decision points")
+        print("")
     
     try:
         result = chain.solve_issue(issue_data)
@@ -359,6 +377,16 @@ def handle_solve(args):
             print(f"  Model: {usage.get('model', 'N/A')}")
             print(f"  Total tokens: {usage.get('total_tokens', 0)}")
             print(f"  Estimated cost: ${usage.get('estimated_cost', 0):.4f}")
+    
+    # Show interaction history if requested
+    if interactive and getattr(args, 'show_history', False):
+        history = chain.get_interaction_history()
+        if history and history.record_count > 0:
+            print("\n📝 Interaction History:")
+            print(f"  Session ID: {history.session_id}")
+            print(f"  Total interactions: {history.record_count}")
+            print(f"  Approved: {history.approved_count}")
+            print(f"  Rejected: {history.rejected_count}")
         
     if args.output:
         chain.export_result(args.output)
