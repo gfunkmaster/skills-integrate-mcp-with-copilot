@@ -267,8 +267,15 @@ class AzureOpenAIProvider(LLMProvider):
         """
         Calculate estimated cost for the request.
         
-        Note: Azure pricing varies by region and agreement.
-        These are approximate pay-as-you-go prices.
+        WARNING: Azure pricing varies significantly by:
+        - Region (East US vs. Europe)
+        - Agreement type (Pay-as-you-go vs. Enterprise)
+        - Reserved capacity commitments
+        
+        The default prices here are approximate pay-as-you-go US prices
+        as of 2024. For accurate cost tracking:
+        - Set custom pricing via config.extra_options['pricing']
+        - Or use Azure Cost Management for authoritative data
         
         Args:
             prompt_tokens: Number of input tokens.
@@ -276,13 +283,14 @@ class AzureOpenAIProvider(LLMProvider):
             model: Deployment/model name.
             
         Returns:
-            Estimated cost in USD.
+            Estimated cost in USD (may not reflect actual billing).
         """
         # Check for custom pricing in config
         custom_pricing = self.config.extra_options.get("pricing", {})
         
-        # Default Azure OpenAI pricing per 1000 tokens (approximate)
-        # Actual pricing depends on region and agreement
+        # Default Azure OpenAI pricing per 1000 tokens (approximate, US pay-as-you-go)
+        # WARNING: These prices may be outdated. Check Azure pricing page for current rates.
+        # https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/
         default_pricing = {
             "gpt-4": (0.03, 0.06),
             "gpt-4-32k": (0.06, 0.12),
@@ -290,7 +298,7 @@ class AzureOpenAIProvider(LLMProvider):
             "gpt-35-turbo-16k": (0.003, 0.004),
         }
         
-        # Merge with custom pricing
+        # Merge with custom pricing (custom pricing takes precedence)
         pricing = {**default_pricing, **custom_pricing}
         
         # Find matching pricing
@@ -301,7 +309,11 @@ class AzureOpenAIProvider(LLMProvider):
                 output_cost = (completion_tokens / 1000) * output_price
                 return input_cost + output_cost
         
-        # Default pricing if model not found
+        # Return 0 if model not found (no estimate available)
+        logger.debug(
+            f"No pricing data for model '{model}'. "
+            "Set custom pricing via config.extra_options['pricing']."
+        )
         return 0.0
     
     def _handle_error(self, error: Exception) -> LLMError:

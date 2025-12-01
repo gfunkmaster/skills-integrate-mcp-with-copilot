@@ -312,6 +312,7 @@ class DiskCache(ResponseCache):
     def _load_index(self) -> None:
         """Load cache index from disk."""
         if not self._index_file.exists():
+            logger.debug(f"No cache index file found at {self._index_file}")
             return
         
         try:

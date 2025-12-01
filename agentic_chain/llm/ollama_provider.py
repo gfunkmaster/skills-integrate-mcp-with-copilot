@@ -117,11 +117,17 @@ class OllamaProvider(LLMProvider):
         """
         Estimate token count for text.
         
-        Note: This is an approximation. Ollama doesn't provide
-        exact token counts in all cases.
+        Note: This is a rough approximation (~4 characters per token for English).
+        Actual token counts vary significantly by model and tokenizer.
+        For accurate token counting, consider using the tiktoken library
+        or the specific model's tokenizer.
+        
+        Ollama provides actual token counts in the response when available,
+        which are used preferentially.
         """
         # Simple approximation: ~4 characters per token for English
-        return len(text) // 4
+        # This can be off by 20-50% for non-English text or code
+        return max(1, len(text) // 4)
     
     def complete(
         self,
