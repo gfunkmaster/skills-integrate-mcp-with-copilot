@@ -60,12 +60,27 @@ from .observability import (
     ObservabilityData,
     ExecutionTimeline,
     AgentStep,
+)
+
 # GitHub integration
 from .github_integration import (
     WebhookHandler,
     IssueProcessor,
     CommentFormatter,
     GitHubConfig,
+)
+
+# Memory system
+from .memory import (
+    MemoryManager,
+    MemoryType,
+    MemoryEntry,
+    MemoryQuery,
+    MemorySearchResult,
+    MemoryStorage,
+    SQLiteStorage,
+    EmbeddingProvider,
+    SimpleEmbedding,
 )
 
 __version__ = "0.1.0"
@@ -116,4 +131,14 @@ __all__ = [
     "IssueProcessor",
     "CommentFormatter",
     "GitHubConfig",
+    # Memory System
+    "MemoryManager",
+    "MemoryType",
+    "MemoryEntry",
+    "MemoryQuery",
+    "MemorySearchResult",
+    "MemoryStorage",
+    "SQLiteStorage",
+    "EmbeddingProvider",
+    "SimpleEmbedding",
 ]
