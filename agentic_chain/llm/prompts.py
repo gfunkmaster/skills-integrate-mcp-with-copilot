@@ -8,7 +8,6 @@ This module provides prompt templates for different agent operations:
 - Implementation planning
 """
 
-from dataclasses import dataclass
 from typing import Optional
 
 

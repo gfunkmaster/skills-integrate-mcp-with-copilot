@@ -209,9 +209,6 @@ class CodeReviewer(BaseAgent):
             return json.loads(content)
         except json.JSONDecodeError:
             return None
-                
-        context.code_review = review
-        return context
     
     def _find_relevant_files(self, context: AgentContext) -> list:
         """Find files relevant to the issue."""
