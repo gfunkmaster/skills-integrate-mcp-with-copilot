@@ -5,6 +5,7 @@ FastAPI application for Agentic Chain REST API.
 import asyncio
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,11 +13,10 @@ from typing import Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from ..orchestrator import AgenticChain
-from .auth import is_auth_enabled, require_api_key
-from .jobs import Job, JobStore, job_store
+from .auth import require_api_key
+from .jobs import job_store
 from .logging_middleware import RequestLoggingMiddleware
 from .models import (
     AnalyzeIssueRequest,
@@ -35,6 +35,18 @@ from .rate_limit import RateLimitMiddleware
 from .webhooks import webhook_manager
 
 logger = logging.getLogger(__name__)
+
+# Dedicated thread pool for analysis tasks
+_analysis_executor: Optional[ThreadPoolExecutor] = None
+
+
+def get_analysis_executor() -> ThreadPoolExecutor:
+    """Get or create the analysis thread pool executor."""
+    global _analysis_executor
+    if _analysis_executor is None:
+        max_workers = int(os.environ.get("AGENTIC_CHAIN_MAX_WORKERS", "4"))
+        _analysis_executor = ThreadPoolExecutor(max_workers=max_workers)
+    return _analysis_executor
 
 
 # Background task for job cleanup
@@ -61,6 +73,12 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    
+    # Shutdown thread pool executor
+    global _analysis_executor
+    if _analysis_executor is not None:
+        _analysis_executor.shutdown(wait=False)
+        _analysis_executor = None
 
 
 def create_app() -> FastAPI:
@@ -408,10 +426,11 @@ async def process_issue_analysis(job_id: str):
             progress="Running agentic chain...",
         )
         
-        # Run synchronous analysis in thread pool
+        # Run synchronous analysis in dedicated thread pool
         loop = asyncio.get_event_loop()
+        executor = get_analysis_executor()
         result = await loop.run_in_executor(
-            None,
+            executor,
             chain.solve_issue,
             params["issue_data"],
         )
@@ -466,10 +485,11 @@ async def process_project_analysis(job_id: str):
             llm_config=params.get("llm_config"),
         )
         
-        # Run synchronous analysis in thread pool
+        # Run synchronous analysis in dedicated thread pool
         loop = asyncio.get_event_loop()
+        executor = get_analysis_executor()
         result = await loop.run_in_executor(
-            None,
+            executor,
             chain.analyze_project,
         )
         

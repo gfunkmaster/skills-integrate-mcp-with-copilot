@@ -7,7 +7,7 @@ import hmac
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import httpx
@@ -72,6 +72,10 @@ class WebhookManager:
         """List all registered webhooks."""
         return list(self._webhooks.values())
     
+    def clear(self):
+        """Clear all webhooks. Primarily for testing."""
+        self._webhooks.clear()
+    
     def _compute_signature(self, payload: bytes, secret: str) -> str:
         """Compute HMAC-SHA256 signature for payload."""
         return hmac.new(
@@ -104,8 +108,8 @@ class WebhookManager:
         }
         payload_bytes = json.dumps(payload, default=str).encode("utf-8")
         
-        # Collect target webhooks
-        targets: List[tuple] = []  # (url, secret)
+        # Collect target webhooks as (url, secret) pairs
+        targets: List[Tuple[str, Optional[str]]] = []
         
         # Add job-specific webhook if provided
         if webhook_url:

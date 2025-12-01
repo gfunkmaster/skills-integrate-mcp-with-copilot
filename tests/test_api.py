@@ -29,8 +29,8 @@ def client(test_app):
 @pytest.fixture(autouse=True)
 def clear_stores():
     """Clear job and webhook stores before each test."""
-    job_store._jobs.clear()
-    webhook_manager._webhooks.clear()
+    job_store.clear()
+    webhook_manager.clear()
     yield
 
 

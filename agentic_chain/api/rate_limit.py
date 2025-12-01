@@ -3,10 +3,10 @@ Rate limiting middleware using token bucket algorithm.
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 import time
-from collections import defaultdict
 from typing import Callable, Dict, Optional
 
 from fastapi import HTTPException, Request
@@ -83,19 +83,22 @@ class RateLimiter:
         self.rate = rate
         self.capacity = capacity
         self.enabled = enabled
-        self._buckets: Dict[str, TokenBucket] = defaultdict(
-            lambda: TokenBucket(self.rate, self.capacity)
-        )
+        self._buckets: Dict[str, TokenBucket] = {}
+        self._lock = asyncio.Lock()
         self._cleanup_interval = 300  # 5 minutes
         self._last_cleanup = time.monotonic()
+    
+    def _get_or_create_bucket(self, client_id: str) -> TokenBucket:
+        """Get or create a bucket for a client (not thread-safe, use with lock)."""
+        if client_id not in self._buckets:
+            self._buckets[client_id] = TokenBucket(self.rate, self.capacity)
+        return self._buckets[client_id]
     
     def get_client_id(self, request: Request) -> str:
         """Get client identifier from request."""
         # Use API key if available, otherwise use IP
         api_key = request.headers.get("X-API-Key")
         if api_key:
-            # Hash the API key for privacy
-            import hashlib
             return f"key:{hashlib.sha256(api_key.encode()).hexdigest()[:16]}"
         
         # Use forwarded IP if behind proxy
@@ -123,7 +126,9 @@ class RateLimiter:
         await self._maybe_cleanup()
         
         client_id = self.get_client_id(request)
-        bucket = self._buckets[client_id]
+        
+        async with self._lock:
+            bucket = self._get_or_create_bucket(client_id)
         
         if await bucket.consume():
             return True
@@ -145,14 +150,15 @@ class RateLimiter:
         
         self._last_cleanup = now
         
-        # Remove buckets that are at full capacity (inactive)
-        to_remove = [
-            client_id for client_id, bucket in self._buckets.items()
-            if bucket.tokens >= bucket.capacity
-        ]
-        
-        for client_id in to_remove:
-            del self._buckets[client_id]
+        async with self._lock:
+            # Remove buckets that are at full capacity (inactive)
+            to_remove = [
+                client_id for client_id, bucket in self._buckets.items()
+                if bucket.tokens >= bucket.capacity
+            ]
+            
+            for client_id in to_remove:
+                del self._buckets[client_id]
         
         if to_remove:
             logger.debug(f"Cleaned up {len(to_remove)} rate limit buckets")

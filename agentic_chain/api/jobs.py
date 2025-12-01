@@ -4,8 +4,8 @@ In-memory job store for async job processing.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from .models import JobStatus
@@ -83,33 +83,40 @@ class JobStore:
             logger.info(f"Job {job_id} status updated to {status}")
             return job
     
-    def list_jobs(self, limit: int = 100) -> list:
+    def list_jobs(self, limit: int = 100) -> List[Job]:
         """List recent jobs."""
-        jobs = sorted(
-            self._jobs.values(),
+        # Take a snapshot of jobs to avoid iteration issues
+        jobs_snapshot = list(self._jobs.values())
+        jobs_sorted = sorted(
+            jobs_snapshot,
             key=lambda j: j.created_at,
             reverse=True
         )
-        return jobs[:limit]
+        return jobs_sorted[:limit]
     
     def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
         """Remove jobs older than max_age_hours."""
-        cutoff = datetime.now(timezone.utc)
-        from datetime import timedelta
-        cutoff = cutoff - timedelta(hours=max_age_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        
+        # Take a snapshot to avoid modification during iteration
+        jobs_snapshot = list(self._jobs.items())
         
         to_remove = [
-            job_id for job_id, job in self._jobs.items()
+            job_id for job_id, job in jobs_snapshot
             if job.created_at < cutoff
         ]
         
         for job_id in to_remove:
-            del self._jobs[job_id]
+            self._jobs.pop(job_id, None)
         
         if to_remove:
             logger.info(f"Cleaned up {len(to_remove)} old jobs")
         
         return len(to_remove)
+    
+    def clear(self):
+        """Clear all jobs. Primarily for testing."""
+        self._jobs.clear()
 
 
 # Global job store instance
