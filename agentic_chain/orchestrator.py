@@ -66,16 +66,23 @@ class AgenticChain:
         if not self._llm_provider and llm_config:
             self._llm_provider = self._create_llm_from_config(llm_config)
         
-        # Create solution implementer with LLM if available
+        # Create agents with LLM if available
+        project_analyzer = ProjectAnalyzer()
+        issue_analyzer = IssueAnalyzer()
+        code_reviewer = CodeReviewer()
         solution_implementer = SolutionImplementer()
+        
         if self._llm_provider:
+            project_analyzer.llm_provider = self._llm_provider
+            issue_analyzer.llm_provider = self._llm_provider
+            code_reviewer.llm_provider = self._llm_provider
             solution_implementer.llm_provider = self._llm_provider
         
         # Default agent pipeline
         self.agents = [
-            ProjectAnalyzer(),
-            IssueAnalyzer(),
-            CodeReviewer(),
+            project_analyzer,
+            issue_analyzer,
+            code_reviewer,
             solution_implementer,
         ]
         
@@ -105,9 +112,9 @@ class AgenticChain:
     def llm_provider(self, provider: "LLMProvider"):
         """Set the LLM provider and update agents."""
         self._llm_provider = provider
-        # Update SolutionImplementer with new provider
+        # Update all LLM-capable agents with new provider
         for agent in self.agents:
-            if isinstance(agent, SolutionImplementer):
+            if hasattr(agent, 'llm_provider'):
                 agent.llm_provider = provider
         
     def add_agent(self, agent: BaseAgent, position: Optional[int] = None):
