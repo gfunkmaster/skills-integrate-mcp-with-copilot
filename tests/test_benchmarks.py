@@ -23,6 +23,16 @@ from agentic_chain.agents.solution_implementer import SolutionImplementer
 from agentic_chain.parallel import ExecutionMode, ParallelExecutionConfig
 
 
+# Performance constants (in seconds)
+PROJECT_ANALYSIS_TARGET = 5.0  # Target time for project analysis
+ISSUE_ANALYSIS_TARGET = 2.0   # Target time for issue analysis
+CODE_REVIEW_TARGET = 3.0      # Target time for code review
+SOLUTION_TARGET = 2.0         # Target time for solution generation
+FULL_CHAIN_TARGET = 10.0      # Target time for full chain execution
+SCALING_BASE_TIME = 0.5       # Base time overhead for analysis
+SCALING_PER_FILE = 0.1        # Expected time per file for scaling tests
+
+
 @pytest.fixture
 def large_project(tmp_path):
     """Create a larger project structure for benchmarking."""
@@ -189,7 +199,7 @@ class TestAnalysisPerformance:
         duration = time.perf_counter() - start_time
         
         assert result.project_analysis is not None
-        assert duration < 5.0, f"Project analysis took {duration:.2f}s, target is <5s"
+        assert duration < PROJECT_ANALYSIS_TARGET, f"Project analysis took {duration:.2f}s, target is <{PROJECT_ANALYSIS_TARGET}s"
     
     def test_issue_analysis_under_target(self, large_project, complex_issue):
         """Test that issue analysis completes in under 2 seconds."""
@@ -206,7 +216,7 @@ class TestAnalysisPerformance:
         duration = time.perf_counter() - start_time
         
         assert result.issue_analysis is not None
-        assert duration < 2.0, f"Issue analysis took {duration:.2f}s, target is <2s"
+        assert duration < ISSUE_ANALYSIS_TARGET, f"Issue analysis took {duration:.2f}s, target is <{ISSUE_ANALYSIS_TARGET}s"
     
     def test_code_review_under_target(self, large_project, complex_issue):
         """Test that code review completes in under 3 seconds."""
@@ -225,7 +235,7 @@ class TestAnalysisPerformance:
         duration = time.perf_counter() - start_time
         
         assert result.code_review is not None
-        assert duration < 3.0, f"Code review took {duration:.2f}s, target is <3s"
+        assert duration < CODE_REVIEW_TARGET, f"Code review took {duration:.2f}s, target is <{CODE_REVIEW_TARGET}s"
     
     def test_solution_generation_under_target(self, large_project, complex_issue):
         """Test that solution generation completes in under 2 seconds."""
@@ -249,7 +259,7 @@ class TestAnalysisPerformance:
         duration = time.perf_counter() - start_time
         
         assert result.solution is not None
-        assert duration < 2.0, f"Solution generation took {duration:.2f}s, target is <2s"
+        assert duration < SOLUTION_TARGET, f"Solution generation took {duration:.2f}s, target is <{SOLUTION_TARGET}s"
 
 
 class TestChainPerformance:
@@ -265,7 +275,7 @@ class TestChainPerformance:
         
         assert result is not None
         assert "solution" in result
-        assert duration < 10.0, f"Full chain took {duration:.2f}s, target is <10s"
+        assert duration < FULL_CHAIN_TARGET, f"Full chain took {duration:.2f}s, target is <{FULL_CHAIN_TARGET}s"
     
     def test_sequential_vs_parallel_performance(self, large_project, complex_issue):
         """Compare sequential vs parallel execution performance."""
@@ -321,8 +331,8 @@ class TestScalabilityBenchmarks:
         
         assert result.project_analysis is not None
         
-        # Expect roughly linear scaling: ~0.1s per file max
-        expected_max = 0.5 + (num_files * 0.1)
+        # Expect roughly linear scaling based on defined constants
+        expected_max = SCALING_BASE_TIME + (num_files * SCALING_PER_FILE)
         assert duration < expected_max, f"{num_files} files took {duration:.2f}s, expected <{expected_max}s"
 
 

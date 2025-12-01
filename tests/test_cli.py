@@ -19,6 +19,38 @@ from agentic_chain.cli import (
 )
 
 
+def create_mock_args(**kwargs):
+    """Helper to create mock args with default values.
+    
+    Returns a MagicMock with common CLI argument defaults that can be
+    overridden by keyword arguments.
+    """
+    defaults = {
+        'llm': None,
+        'model': None,
+        'api_key': None,
+        'project_path': None,
+        'issue_file': None,
+        'title': None,
+        'body': None,
+        'labels': None,
+        'output': None,
+        'verbose': False,
+        'summary': False,
+        'show_usage': False,
+        'interactive': False,
+        'show_history': False,
+        'memory_command': None,
+        'db_path': None,
+    }
+    defaults.update(kwargs)
+    
+    args = MagicMock()
+    for key, value in defaults.items():
+        setattr(args, key, value)
+    return args
+
+
 class TestSetupLogging:
     """Tests for setup_logging function."""
     
@@ -80,10 +112,7 @@ class TestGetLLMConfig:
     
     def test_get_llm_config_full(self):
         """Test with all options specified."""
-        args = MagicMock()
-        args.llm = "openai"
-        args.model = "gpt-4"
-        args.api_key = "test-key"
+        args = create_mock_args(llm="openai", model="gpt-4", api_key="test-key")
         
         result = get_llm_config(args)
         
@@ -99,10 +128,7 @@ class TestHandleAnalyze:
     
     def test_handle_analyze_nonexistent_path(self, capsys):
         """Test analyze with nonexistent project path."""
-        args = MagicMock()
-        args.project_path = "/nonexistent/path"
-        args.output = None
-        args.verbose = False
+        args = create_mock_args(project_path="/nonexistent/path")
         
         with pytest.raises(SystemExit) as exc_info:
             handle_analyze(args)
@@ -116,10 +142,7 @@ class TestHandleAnalyze:
         # Create a minimal project
         (tmp_path / "app.py").write_text("print('hello')")
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.output = None
-        args.verbose = False
+        args = create_mock_args(project_path=str(tmp_path))
         
         handle_analyze(args)
         
@@ -132,10 +155,7 @@ class TestHandleAnalyze:
         (tmp_path / "app.py").write_text("print('hello')")
         output_file = tmp_path / "result.json"
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.output = str(output_file)
-        args.verbose = False
+        args = create_mock_args(project_path=str(tmp_path), output=str(output_file))
         
         handle_analyze(args)
         
@@ -150,21 +170,7 @@ class TestHandleSolve:
     
     def test_handle_solve_nonexistent_path(self, capsys):
         """Test solve with nonexistent project path."""
-        args = MagicMock()
-        args.project_path = "/nonexistent/path"
-        args.issue_file = None
-        args.title = None
-        args.body = None
-        args.labels = None
-        args.output = None
-        args.verbose = False
-        args.summary = False
-        args.show_usage = False
-        args.llm = None
-        args.model = None
-        args.api_key = None
-        args.interactive = False
-        args.show_history = False
+        args = create_mock_args(project_path="/nonexistent/path")
         
         with pytest.raises(SystemExit) as exc_info:
             handle_solve(args)
@@ -175,19 +181,7 @@ class TestHandleSolve:
         """Test solve without issue data."""
         (tmp_path / "app.py").write_text("print('hello')")
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.issue_file = None
-        args.title = None
-        args.body = None
-        args.labels = None
-        args.output = None
-        args.verbose = False
-        args.summary = False
-        args.show_usage = False
-        args.llm = None
-        args.model = None
-        args.api_key = None
+        args = create_mock_args(project_path=str(tmp_path))
         
         with pytest.raises(SystemExit) as exc_info:
             handle_solve(args)
@@ -200,21 +194,12 @@ class TestHandleSolve:
         """Test solve with title option."""
         (tmp_path / "app.py").write_text("print('hello')")
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.issue_file = None
-        args.title = "Test Issue"
-        args.body = "This is a test issue"
-        args.labels = ["bug", "enhancement"]
-        args.output = None
-        args.verbose = False
-        args.summary = False
-        args.show_usage = False
-        args.llm = None
-        args.model = None
-        args.api_key = None
-        args.interactive = False
-        args.show_history = False
+        args = create_mock_args(
+            project_path=str(tmp_path),
+            title="Test Issue",
+            body="This is a test issue",
+            labels=["bug", "enhancement"]
+        )
         
         handle_solve(args)
         
@@ -233,21 +218,10 @@ class TestHandleSolve:
         }
         issue_file.write_text(json.dumps(issue_data))
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.issue_file = str(issue_file)
-        args.title = None
-        args.body = None
-        args.labels = None
-        args.output = None
-        args.verbose = False
-        args.summary = False
-        args.show_usage = False
-        args.llm = None
-        args.model = None
-        args.api_key = None
-        args.interactive = False
-        args.show_history = False
+        args = create_mock_args(
+            project_path=str(tmp_path),
+            issue_file=str(issue_file)
+        )
         
         handle_solve(args)
         
@@ -258,21 +232,12 @@ class TestHandleSolve:
         """Test solve with summary option."""
         (tmp_path / "app.py").write_text("print('hello')")
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.issue_file = None
-        args.title = "Test Issue"
-        args.body = "Test body"
-        args.labels = None
-        args.output = None
-        args.verbose = False
-        args.summary = True
-        args.show_usage = False
-        args.llm = None
-        args.model = None
-        args.api_key = None
-        args.interactive = False
-        args.show_history = False
+        args = create_mock_args(
+            project_path=str(tmp_path),
+            title="Test Issue",
+            body="Test body",
+            summary=True
+        )
         
         handle_solve(args)
         
@@ -285,7 +250,7 @@ class TestHandleProviders:
     
     def test_handle_providers(self, capsys):
         """Test listing providers."""
-        args = MagicMock()
+        args = create_mock_args()
         
         handle_providers(args)
         
@@ -299,8 +264,7 @@ class TestHandleMemory:
     
     def test_handle_memory_no_subcommand(self, capsys):
         """Test memory command without subcommand."""
-        args = MagicMock()
-        args.memory_command = None
+        args = create_mock_args()
         
         with pytest.raises(SystemExit) as exc_info:
             handle_memory(args)
@@ -311,9 +275,7 @@ class TestHandleMemory:
         """Test memory stats command."""
         db_path = tmp_path / "memory.db"
         
-        args = MagicMock()
-        args.memory_command = "stats"
-        args.db_path = str(db_path)
+        args = create_mock_args(memory_command="stats", db_path=str(db_path))
         
         handle_memory(args)
         
@@ -368,18 +330,10 @@ class TestCLIErrorHandling:
         invalid_file = tmp_path / "invalid.json"
         invalid_file.write_text("not valid json")
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.issue_file = str(invalid_file)
-        args.title = None
-        args.body = None
-        args.labels = None
-        args.output = None
-        args.verbose = False
-        args.summary = False
-        args.llm = None
-        args.model = None
-        args.api_key = None
+        args = create_mock_args(
+            project_path=str(tmp_path),
+            issue_file=str(invalid_file)
+        )
         
         with pytest.raises(SystemExit) as exc_info:
             handle_solve(args)
@@ -392,18 +346,10 @@ class TestCLIErrorHandling:
         """Test handling of missing issue file."""
         (tmp_path / "app.py").write_text("print('hello')")
         
-        args = MagicMock()
-        args.project_path = str(tmp_path)
-        args.issue_file = str(tmp_path / "nonexistent.json")
-        args.title = None
-        args.body = None
-        args.labels = None
-        args.output = None
-        args.verbose = False
-        args.summary = False
-        args.llm = None
-        args.model = None
-        args.api_key = None
+        args = create_mock_args(
+            project_path=str(tmp_path),
+            issue_file=str(tmp_path / "nonexistent.json")
+        )
         
         with pytest.raises(SystemExit) as exc_info:
             handle_solve(args)
