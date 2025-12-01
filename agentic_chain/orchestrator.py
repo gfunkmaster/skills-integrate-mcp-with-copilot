@@ -358,6 +358,8 @@ class AgenticChain:
             self.context.metadata["solution_modified"] = True
         
         return result.approved
+
+    @property
     def execution_mode(self) -> ExecutionMode:
         """Get the current execution mode."""
         return self._execution_mode
