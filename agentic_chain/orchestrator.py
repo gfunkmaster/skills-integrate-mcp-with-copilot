@@ -15,6 +15,15 @@ from .agents.project_analyzer import ProjectAnalyzer
 from .agents.issue_analyzer import IssueAnalyzer
 from .agents.code_reviewer import CodeReviewer
 from .agents.solution_implementer import SolutionImplementer
+from .interactive import (
+    InteractionHandler,
+    ConsoleInteractionHandler,
+    InteractionType,
+    InteractionPoint,
+    InteractionOption,
+    InteractionResult,
+    InteractionHistory,
+)
 from .observability import (
     Tracer,
     TracerConfig,
@@ -49,6 +58,7 @@ class AgenticChain:
     
     Supports LLM integration for intelligent code generation.
     Includes comprehensive observability with tracing, metrics, and logging.
+    Supports interactive mode for human-in-the-loop processing.
     Supports both sequential and parallel execution modes for optimal performance.
     
     Example usage:
@@ -70,6 +80,10 @@ class AgenticChain:
         result = chain.solve_issue(issue_data)
         timeline = chain.get_execution_timeline()
         
+        # With interactive mode
+        chain = AgenticChain(project_path="/path/to/project", interactive=True)
+        result = chain.solve_issue(issue_data)
+        history = chain.get_interaction_history()
         # With parallel execution
         chain = AgenticChain(
             project_path="/path/to/project",
@@ -87,6 +101,8 @@ class AgenticChain:
         llm_config: Optional[dict] = None,
         enable_tracing: bool = True,
         tracer_config: Optional[TracerConfig] = None,
+        interactive: bool = False,
+        interaction_handler: Optional[InteractionHandler] = None,
         execution_mode: ExecutionMode = ExecutionMode.SEQUENTIAL,
         parallel_config: Optional[ParallelExecutionConfig] = None,
         progress_callback: Optional[Callable[[str, str, float], None]] = None,
@@ -104,13 +120,28 @@ class AgenticChain:
                 - api_key: API key (optional, uses env var if not set)
             enable_tracing: Whether to enable distributed tracing.
             tracer_config: Optional configuration for the tracer.
+            interactive: Whether to enable interactive mode.
+            interaction_handler: Custom interaction handler (defaults to ConsoleInteractionHandler).
             execution_mode: Sequential or parallel execution mode.
             parallel_config: Configuration for parallel execution.
             progress_callback: Optional callback(agent_name, status, progress)
                               for progress tracking during parallel execution.
         """
         self.project_path = Path(project_path).resolve()
-        self.context = AgentContext(project_path=str(self.project_path))
+        
+        # Set up interactive mode (lazy initialization - only create handler when needed)
+        self._interactive = interactive
+        if interaction_handler:
+            self._interaction_handler = interaction_handler
+        elif interactive:
+            self._interaction_handler = ConsoleInteractionHandler(enabled=True)
+        else:
+            self._interaction_handler = None  # No handler created until needed
+        
+        self.context = AgentContext(
+            project_path=str(self.project_path),
+            interaction_handler=self._interaction_handler,
+        )
         
         # Set up observability
         self._tracer = Tracer(tracer_config or TracerConfig(enabled=enable_tracing))
@@ -191,6 +222,142 @@ class AgenticChain:
         return self._metrics
     
     @property
+    def interactive(self) -> bool:
+        """Check if interactive mode is enabled."""
+        return self._interactive
+    
+    @interactive.setter
+    def interactive(self, value: bool):
+        """Enable or disable interactive mode."""
+        self._interactive = value
+        if value and self._interaction_handler is None:
+            # Lazy initialization when enabling interactive mode
+            self._interaction_handler = ConsoleInteractionHandler(enabled=True)
+            self.context.interaction_handler = self._interaction_handler
+        elif self._interaction_handler:
+            self._interaction_handler.enabled = value
+    
+    @property
+    def interaction_handler(self) -> Optional[InteractionHandler]:
+        """Get the interaction handler."""
+        return self._interaction_handler
+    
+    def get_interaction_history(self) -> Optional[InteractionHistory]:
+        """
+        Get the interaction history from the current session.
+        
+        Returns:
+            InteractionHistory if available, None otherwise.
+        """
+        if self._interaction_handler:
+            return self._interaction_handler.history
+        return None
+    
+    def _handle_agent_interaction(self, agent: BaseAgent) -> bool:
+        """
+        Handle interactive review after an agent completes.
+        
+        Returns True to continue, False to cancel.
+        """
+        # Define interaction points based on agent type
+        if agent.name == "IssueAnalyzer":
+            return self._review_issue_analysis()
+        elif agent.name == "CodeReviewer":
+            return self._review_code_analysis()
+        
+        return True  # Continue by default
+    
+    def _review_issue_analysis(self) -> bool:
+        """Interactive review of issue analysis results."""
+        if not self.context.issue_analysis:
+            return True
+        
+        analysis = self.context.issue_analysis
+        issue_type = analysis.get("issue_type", "unknown")
+        priority = analysis.get("priority", "medium")
+        requirements = analysis.get("requirements", [])
+        
+        message = f"Issue Type: {issue_type}\nPriority: {priority}"
+        if requirements:
+            message += "\n\nRequirements identified:"
+            for i, req in enumerate(requirements[:5], 1):
+                message += f"\n  {i}. {req[:80]}"
+        
+        result = self._interaction_handler.request_confirmation(
+            title="Issue Analysis Complete",
+            message=message,
+            agent_name="IssueAnalyzer",
+            default=True,
+        )
+        
+        # Handle user feedback
+        if result.custom_input or result.feedback:
+            self.context.metadata["user_feedback_analysis"] = (
+                result.custom_input or result.feedback
+            )
+        
+        return result.approved
+    
+    def _review_code_analysis(self) -> bool:
+        """Interactive review of code review results."""
+        if not self.context.code_review:
+            return True
+        
+        review = self.context.code_review
+        relevant_files = review.get("relevant_files", [])
+        issues_found = review.get("potential_issues", [])
+        
+        message = f"Found {len(relevant_files)} relevant files"
+        if relevant_files:
+            message += ":\n"
+            for f in relevant_files[:5]:
+                message += f"  • {f}\n"
+        
+        if issues_found:
+            message += f"\n{len(issues_found)} potential issues identified"
+        
+        result = self._interaction_handler.request_confirmation(
+            title="Code Review Complete",
+            message=message,
+            agent_name="CodeReviewer",
+            default=True,
+        )
+        
+        return result.approved
+    
+    def _handle_solution_review(self) -> bool:
+        """Interactive review of the final proposed solution."""
+        if not self.context.solution:
+            return True
+        
+        solution = self.context.solution
+        proposed_changes = solution.get("proposed_changes", [])
+        risks = solution.get("risks", [])
+        implementation_plan = solution.get("implementation_plan", {})
+        
+        summary = "Proposed Solution:\n"
+        
+        if implementation_plan:
+            complexity = implementation_plan.get("complexity", "unknown")
+            hours = implementation_plan.get("estimated_hours", "N/A")
+            summary += f"\nComplexity: {complexity}, Estimated: {hours} hours"
+        
+        result = self._interaction_handler.request_solution_review(
+            title="Solution Review",
+            solution_summary=summary,
+            proposed_changes=proposed_changes,
+            risks=risks,
+            agent_name="SolutionImplementer",
+        )
+        
+        # Store user feedback for potential refinement
+        if result.custom_input or result.feedback:
+            self.context.metadata["user_feedback_solution"] = (
+                result.custom_input or result.feedback
+            )
+            self.context.metadata["solution_modified"] = True
+        
+        return result.approved
     def execution_mode(self) -> ExecutionMode:
         """Get the current execution mode."""
         return self._execution_mode
@@ -288,11 +455,94 @@ class AgenticChain:
                 root_span.set_attribute("llm.provider", self._llm_provider.config.provider)
                 root_span.set_attribute("llm.model", self._llm_provider.config.model)
             
+            chain_success = True
+            user_cancelled = False
+            for agent in self.agents:
+                start_time = time.perf_counter()
+                
+                # Create span for each agent
+                with self._tracer.start_span(
+                    f"agent.{agent.name}",
+                    kind=SpanKind.INTERNAL,
+                    attributes={
+                        "agent.name": agent.name,
+                        "agent.type": type(agent).__name__,
+                    }
+                ) as agent_span:
+                    # Create agent step for timeline
+                    step = AgentStep(
+                        name=f"agent.{agent.name}",
+                        agent_name=agent.name,
+                        status="running",
+                    )
+                    step.start_time = agent_span.start_time
+                    
+                    logger.info(f"Executing agent: {agent.name}")
+                    try:
+                        self.context = agent.execute(self.context)
+                        
+                        duration = time.perf_counter() - start_time
+                        agent_span.set_attribute("execution.duration_seconds", duration)
+                        agent_span.set_status(SpanStatus.OK)
+                        
+                        # Update step
+                        step.status = "success"
+                        step.duration_ms = duration * 1000
+                        
+                        # Record metrics
+                        self._metrics.record_execution_time(agent.name, duration, success=True)
+                        
+                        logger.info(f"Agent {agent.name} completed successfully in {duration:.3f}s")
+                        
+                        # Interactive mode: request review at key decision points
+                        if (
+                            self._interactive 
+                            and self._interaction_handler is not None
+                            and self._interaction_handler.enabled
+                        ):
+                            should_continue = self._handle_agent_interaction(agent)
+                            if not should_continue:
+                                user_cancelled = True
+                                chain_success = False
+                                logger.info("User cancelled operation in interactive mode")
+                                break
+                        
+                    except Exception as e:
+                        duration = time.perf_counter() - start_time
+                        agent_span.record_exception(e)
+                        
+                        # Update step
+                        step.status = "error"
+                        step.error_message = str(e)
+                        step.duration_ms = duration * 1000
+                        
+                        # Record metrics
+                        self._metrics.record_execution_time(agent.name, duration, success=False)
+                        
+                        chain_success = False
+                        logger.error(f"Agent {agent.name} failed: {str(e)}")
+                        raise
+                    finally:
+                        timeline.add_step(step)
             # Execute based on mode
             if self._execution_mode == ExecutionMode.PARALLEL:
                 chain_success = self._execute_parallel(timeline, root_span)
             else:
                 chain_success = self._execute_sequential(timeline, root_span)
+            
+            # Interactive mode: final solution review
+            if (
+                chain_success 
+                and not user_cancelled
+                and self._interactive 
+                and self._interaction_handler is not None
+                and self._interaction_handler.enabled
+            ):
+                chain_success = self._handle_solution_review()
+            
+            # Complete interaction history
+            if self._interaction_handler:
+                self._interaction_handler.history.complete()
             
             # Complete timeline
             timeline.complete(success=chain_success)
@@ -668,4 +918,5 @@ class AgenticChain:
         if self._llm_provider:
             llm_info = f", llm={self._llm_provider.config.provider}"
         tracing_info = f", tracing={'enabled' if self._tracer.config.enabled else 'disabled'}"
-        return f"AgenticChain(project='{self.project_path}', agents={agent_names}{llm_info}{tracing_info})"
+        interactive_info = f", interactive={'enabled' if self._interactive else 'disabled'}"
+        return f"AgenticChain(project='{self.project_path}', agents={agent_names}{llm_info}{tracing_info}{interactive_info})"
