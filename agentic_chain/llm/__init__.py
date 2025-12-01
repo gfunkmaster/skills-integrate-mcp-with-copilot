@@ -2,7 +2,7 @@
 LLM Integration Module - Provides abstraction for multiple LLM providers.
 
 This module provides a unified interface for interacting with different
-LLM providers like OpenAI, Anthropic, and local models.
+LLM providers like OpenAI, Anthropic, Azure OpenAI, and local models (Ollama).
 """
 
 from .base import (
@@ -14,7 +14,19 @@ from .base import (
 )
 from .openai_provider import OpenAIProvider
 from .anthropic_provider import AnthropicProvider
+from .ollama_provider import OllamaProvider
+from .azure_provider import AzureOpenAIProvider
 from .factory import LLMFactory
+from .cache import ResponseCache, DiskCache, get_cache, clear_cache
+from .config import (
+    AgenticChainConfig,
+    CacheConfig,
+    CostConfig,
+    PrivacyConfig,
+    load_config,
+    find_config_file,
+    create_default_config_file,
+)
 from .prompts import (
     PROJECT_ANALYSIS_SYSTEM,
     PROJECT_ANALYSIS_PROMPT,
@@ -41,7 +53,22 @@ __all__ = [
     # Providers
     "OpenAIProvider",
     "AnthropicProvider",
+    "OllamaProvider",
+    "AzureOpenAIProvider",
     "LLMFactory",
+    # Cache
+    "ResponseCache",
+    "DiskCache",
+    "get_cache",
+    "clear_cache",
+    # Configuration
+    "AgenticChainConfig",
+    "CacheConfig",
+    "CostConfig",
+    "PrivacyConfig",
+    "load_config",
+    "find_config_file",
+    "create_default_config_file",
     # Prompt templates
     "PROJECT_ANALYSIS_SYSTEM",
     "PROJECT_ANALYSIS_PROMPT",

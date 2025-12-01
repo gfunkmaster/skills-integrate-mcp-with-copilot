@@ -36,6 +36,19 @@ from .llm import (
     LLMFactory,
     OpenAIProvider,
     AnthropicProvider,
+    OllamaProvider,
+    AzureOpenAIProvider,
+    ResponseCache,
+    DiskCache,
+    get_cache,
+    clear_cache,
+    AgenticChainConfig,
+    CacheConfig,
+    CostConfig,
+    PrivacyConfig,
+    load_config,
+    find_config_file,
+    create_default_config_file,
 )
 
 # Observability
@@ -105,6 +118,21 @@ __all__ = [
     "LLMFactory",
     "OpenAIProvider",
     "AnthropicProvider",
+    "OllamaProvider",
+    "AzureOpenAIProvider",
+    # Cache
+    "ResponseCache",
+    "DiskCache",
+    "get_cache",
+    "clear_cache",
+    # Configuration
+    "AgenticChainConfig",
+    "CacheConfig",
+    "CostConfig",
+    "PrivacyConfig",
+    "load_config",
+    "find_config_file",
+    "create_default_config_file",
     # Observability
     "Tracer",
     "Span",
