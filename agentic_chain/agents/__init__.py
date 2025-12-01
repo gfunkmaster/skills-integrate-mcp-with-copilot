@@ -4,7 +4,7 @@ Base Agent class for the agentic chain framework.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -56,6 +56,7 @@ class AgentContext:
     solution: Optional[dict] = None
     metadata: dict = field(default_factory=dict)
     llm_context: LLMContext = field(default_factory=LLMContext)
+    plugin_results: dict = field(default_factory=dict)
     
     def to_dict(self) -> dict:
         """Convert context to dictionary."""
@@ -68,14 +69,66 @@ class AgentContext:
             "solution": self.solution,
             "metadata": self.metadata,
             "llm_usage": self.llm_context.to_dict(),
+            "plugin_results": self.plugin_results,
         }
 
 
 class BaseAgent(ABC):
-    """Base class for all agents in the chain."""
+    """
+    Base class for all agents in the chain.
+    
+    This is the standard interface that all agents (both built-in and plugins)
+    must implement. Plugin agents can extend this class to add custom functionality.
+    
+    Example:
+        class MyCustomAgent(BaseAgent):
+            def __init__(self):
+                super().__init__("MyCustomAgent")
+            
+            @property
+            def dependencies(self) -> List[str]:
+                return ["ProjectAnalyzer"]  # Requires project analysis first
+            
+            def execute(self, context: AgentContext) -> AgentContext:
+                # Custom logic here
+                return context
+    """
     
     def __init__(self, name: str):
         self.name = name
+    
+    @property
+    def dependencies(self) -> List[str]:
+        """
+        List of agent names that must run before this agent.
+        
+        Override this property to specify dependencies. The orchestrator
+        will ensure dependent agents run first.
+        
+        Returns:
+            List of agent names this agent depends on.
+        """
+        return []
+    
+    @property
+    def description(self) -> str:
+        """
+        Human-readable description of what this agent does.
+        
+        Returns:
+            Description string.
+        """
+        return f"Agent: {self.name}"
+    
+    @property
+    def version(self) -> str:
+        """
+        Version of this agent.
+        
+        Returns:
+            Version string.
+        """
+        return "1.0.0"
         
     @abstractmethod
     def execute(self, context: AgentContext) -> AgentContext:

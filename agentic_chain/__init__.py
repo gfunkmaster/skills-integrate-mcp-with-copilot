@@ -11,6 +11,7 @@ Key Features:
 - Auto-labeling suggestions
 - Comprehensive observability with tracing, metrics, and logging
 - GitHub integration for automated issue processing
+- Plugin system for custom agents
 This package provides an agentic chain that can understand project context,
 analyze issues, review code, and implement solutions in external projects.
 
@@ -24,7 +25,7 @@ from .agents.issue_analyzer import IssueAnalyzer
 from .agents.code_reviewer import CodeReviewer
 from .agents.solution_implementer import SolutionImplementer
 from .agents.similar_issue_detector import SimilarIssueDetector
-from .agents import AgentContext, LLMContext
+from .agents import AgentContext, LLMContext, BaseAgent
 
 # LLM integration
 from .llm import (
@@ -83,11 +84,23 @@ from .memory import (
     SimpleEmbedding,
 )
 
+# Plugin system
+from .plugins import (
+    PluginRegistry,
+    PluginInfo,
+    PluginLoader,
+    PluginConfig,
+    SecurityAuditor,
+    PerformanceAnalyzer,
+    DocumentationChecker,
+)
+
 __version__ = "0.1.0"
 __all__ = [
     # Core chain
     "AgenticChain",
     # Agents
+    "BaseAgent",
     "ProjectAnalyzer",
     "IssueAnalyzer",
     "CodeReviewer",
@@ -141,4 +154,12 @@ __all__ = [
     "SQLiteStorage",
     "EmbeddingProvider",
     "SimpleEmbedding",
+    # Plugin System
+    "PluginRegistry",
+    "PluginInfo",
+    "PluginLoader",
+    "PluginConfig",
+    "SecurityAuditor",
+    "PerformanceAnalyzer",
+    "DocumentationChecker",
 ]
