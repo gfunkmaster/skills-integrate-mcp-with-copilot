@@ -70,6 +70,19 @@ from .github_integration import (
     GitHubConfig,
 )
 
+# Memory system
+from .memory import (
+    MemoryManager,
+    MemoryType,
+    MemoryEntry,
+    MemoryQuery,
+    MemorySearchResult,
+    MemoryStorage,
+    SQLiteStorage,
+    EmbeddingProvider,
+    SimpleEmbedding,
+)
+
 __version__ = "0.1.0"
 __all__ = [
     # Core chain
@@ -118,4 +131,14 @@ __all__ = [
     "IssueProcessor",
     "CommentFormatter",
     "GitHubConfig",
+    # Memory System
+    "MemoryManager",
+    "MemoryType",
+    "MemoryEntry",
+    "MemoryQuery",
+    "MemorySearchResult",
+    "MemoryStorage",
+    "SQLiteStorage",
+    "EmbeddingProvider",
+    "SimpleEmbedding",
 ]

@@ -143,6 +143,115 @@ Examples:
         help="List available LLM providers"
     )
     
+    # Memory command - manage memory system
+    memory_parser = subparsers.add_parser(
+        "memory",
+        help="Manage the memory system for context awareness"
+    )
+    memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
+    
+    # Memory stats
+    memory_stats_parser = memory_subparsers.add_parser(
+        "stats",
+        help="Show memory system statistics"
+    )
+    memory_stats_parser.add_argument(
+        "--db-path",
+        help="Path to memory database"
+    )
+    
+    # Memory search
+    memory_search_parser = memory_subparsers.add_parser(
+        "search",
+        help="Search memories"
+    )
+    memory_search_parser.add_argument(
+        "query",
+        help="Search query"
+    )
+    memory_search_parser.add_argument(
+        "--limit", "-n",
+        type=int,
+        default=10,
+        help="Maximum results"
+    )
+    memory_search_parser.add_argument(
+        "--project",
+        help="Filter by project path"
+    )
+    memory_search_parser.add_argument(
+        "--db-path",
+        help="Path to memory database"
+    )
+    
+    # Memory export
+    memory_export_parser = memory_subparsers.add_parser(
+        "export",
+        help="Export memories to JSON file"
+    )
+    memory_export_parser.add_argument(
+        "output",
+        help="Output file path"
+    )
+    memory_export_parser.add_argument(
+        "--db-path",
+        help="Path to memory database"
+    )
+    
+    # Memory import
+    memory_import_parser = memory_subparsers.add_parser(
+        "import",
+        help="Import memories from JSON file"
+    )
+    memory_import_parser.add_argument(
+        "input",
+        help="Input file path"
+    )
+    memory_import_parser.add_argument(
+        "--db-path",
+        help="Path to memory database"
+    )
+    
+    # Memory prune
+    memory_prune_parser = memory_subparsers.add_parser(
+        "prune",
+        help="Clean up old or low-importance memories"
+    )
+    memory_prune_parser.add_argument(
+        "--max-age",
+        type=int,
+        help="Remove entries older than N days"
+    )
+    memory_prune_parser.add_argument(
+        "--max-entries",
+        type=int,
+        help="Keep only N entries"
+    )
+    memory_prune_parser.add_argument(
+        "--min-importance",
+        type=float,
+        help="Remove entries below this importance"
+    )
+    memory_prune_parser.add_argument(
+        "--db-path",
+        help="Path to memory database"
+    )
+    
+    # Memory clear
+    memory_clear_parser = memory_subparsers.add_parser(
+        "clear",
+        help="Clear all memories (use with caution!)"
+    )
+    memory_clear_parser.add_argument(
+        "--db-path",
+        help="Path to memory database"
+    )
+    memory_clear_parser.add_argument(
+        "--yes", "-y",
+        action="store_true",
+        help="Skip confirmation"
+    )
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -157,6 +266,8 @@ Examples:
         handle_solve(args)
     elif args.command == "providers":
         handle_providers(args)
+    elif args.command == "memory":
+        handle_memory(args)
 
 
 def get_llm_config(args) -> dict:
@@ -269,6 +380,112 @@ def handle_providers(args):
     except ImportError as e:
         print(f"Error loading LLM module: {e}")
         sys.exit(1)
+
+
+def handle_memory(args):
+    """Handle memory commands."""
+    from .memory import MemoryManager
+    
+    if not args.memory_command:
+        print("Error: Please specify a memory command (stats, search, export, import, prune, clear)")
+        sys.exit(1)
+    
+    db_path = getattr(args, 'db_path', None)
+    manager = MemoryManager(db_path=db_path)
+    
+    try:
+        if args.memory_command == "stats":
+            handle_memory_stats(manager)
+        elif args.memory_command == "search":
+            handle_memory_search(manager, args)
+        elif args.memory_command == "export":
+            handle_memory_export(manager, args)
+        elif args.memory_command == "import":
+            handle_memory_import(manager, args)
+        elif args.memory_command == "prune":
+            handle_memory_prune(manager, args)
+        elif args.memory_command == "clear":
+            handle_memory_clear(manager, args)
+    finally:
+        manager.close()
+
+
+def handle_memory_stats(manager):
+    """Show memory statistics."""
+    print(manager.get_stats_summary())
+
+
+def handle_memory_search(manager, args):
+    """Search memories."""
+    results = manager.search(
+        query=args.query,
+        project_path=getattr(args, 'project', None),
+        limit=args.limit,
+    )
+    
+    if not results:
+        print("No memories found matching your query.")
+        return
+    
+    print(f"Found {len(results)} matching memories:\n")
+    for i, result in enumerate(results, 1):
+        entry = result.entry
+        print(f"{i}. [{entry.memory_type.value}] Score: {result.score:.3f}")
+        print(f"   ID: {entry.id}")
+        content_preview = entry.content[:100].replace('\n', ' ')
+        if len(entry.content) > 100:
+            content_preview += "..."
+        print(f"   Content: {content_preview}")
+        if entry.tags:
+            print(f"   Tags: {', '.join(entry.tags)}")
+        print()
+
+
+def handle_memory_export(manager, args):
+    """Export memories to file."""
+    count = manager.export_memories(args.output)
+    print(f"Exported {count} memories to {args.output}")
+
+
+def handle_memory_import(manager, args):
+    """Import memories from file."""
+    if not Path(args.input).exists():
+        print(f"Error: File not found: {args.input}")
+        sys.exit(1)
+    
+    count = manager.import_memories(args.input)
+    print(f"Imported {count} memories from {args.input}")
+
+
+def handle_memory_prune(manager, args):
+    """Prune old or low-importance memories."""
+    max_age = getattr(args, 'max_age', None)
+    max_entries = getattr(args, 'max_entries', None)
+    min_importance = getattr(args, 'min_importance', None)
+    
+    if not any([max_age, max_entries, min_importance]):
+        print("Performing automatic pruning...")
+        manager.auto_prune()
+        print("Done.")
+    else:
+        deleted = manager.prune(
+            max_age_days=max_age,
+            max_entries=max_entries,
+            min_importance=min_importance,
+        )
+        print(f"Pruned {deleted} memory entries")
+
+
+def handle_memory_clear(manager, args):
+    """Clear all memories."""
+    if not args.yes:
+        confirm = input("Are you sure you want to clear ALL memories? This cannot be undone. [y/N]: ")
+        if confirm.lower() != 'y':
+            print("Aborted.")
+            return
+    
+    manager.clear_all()
+    print("All memories have been cleared.")
 
 
 if __name__ == "__main__":
