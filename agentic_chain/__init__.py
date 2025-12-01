@@ -121,6 +121,8 @@ from .plugins import (
     SecurityAuditor,
     PerformanceAnalyzer,
     DocumentationChecker,
+)
+
 # Interactive mode
 from .interactive import (
     InteractionType,
