@@ -76,7 +76,7 @@ class TestMemoryTypes:
             "metadata": {"key": "value"},
             "importance": 0.7,
             "tags": ["test"],
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": utc_now().isoformat(),
         }
         
         entry = MemoryEntry.from_dict(data)

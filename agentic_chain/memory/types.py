@@ -15,6 +15,30 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def parse_datetime(value: Any) -> Optional[datetime]:
+    """
+    Parse a datetime from string or return as-is if already datetime.
+    
+    Handles ISO format strings including 'Z' suffix for UTC.
+    
+    Args:
+        value: String or datetime to parse
+        
+    Returns:
+        Parsed datetime or None
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        # Handle 'Z' suffix for UTC
+        if value.endswith('Z'):
+            value = value[:-1] + '+00:00'
+        return datetime.fromisoformat(value)
+    return None
+
+
 class MemoryType(Enum):
     """Types of memory entries."""
     
@@ -104,13 +128,8 @@ class MemoryEntry:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MemoryEntry":
         """Create from dictionary."""
-        created_at = data.get("created_at")
-        if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-        
-        updated_at = data.get("updated_at")
-        if isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at)
+        created_at = parse_datetime(data.get("created_at"))
+        updated_at = parse_datetime(data.get("updated_at"))
         
         memory_type_str = data.get("memory_type", "long_term")
         memory_type = MemoryType(memory_type_str)

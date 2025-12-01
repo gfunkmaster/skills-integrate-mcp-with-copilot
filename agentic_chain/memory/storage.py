@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-from .types import MemoryEntry, MemoryQuery, MemorySearchResult, MemoryStats, MemoryType, utc_now
+from .types import MemoryEntry, MemoryQuery, MemorySearchResult, MemoryStats, MemoryType, utc_now, parse_datetime
 
 
 logger = logging.getLogger(__name__)
@@ -179,10 +179,8 @@ class SQLiteStorage(MemoryStorage):
     def _conn(self) -> sqlite3.Connection:
         """Get thread-local database connection."""
         if not hasattr(self._local, 'conn') or self._local.conn is None:
-            self._local.conn = sqlite3.connect(
-                self.db_path,
-                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            )
+            # Don't use detect_types since we store ISO format strings for datetime
+            self._local.conn = sqlite3.connect(self.db_path)
             self._local.conn.row_factory = sqlite3.Row
             # Enable foreign keys
             self._local.conn.execute("PRAGMA foreign_keys = ON")
@@ -266,6 +264,10 @@ class SQLiteStorage(MemoryStorage):
     
     def store(self, entry: MemoryEntry) -> str:
         """Store a memory entry."""
+        # Convert datetime to ISO string for consistent storage
+        created_at_str = entry.created_at.isoformat() if entry.created_at else None
+        updated_at_str = entry.updated_at.isoformat() if entry.updated_at else None
+        
         with self._transaction() as cursor:
             cursor.execute("""
                 INSERT OR REPLACE INTO memories (
@@ -279,8 +281,8 @@ class SQLiteStorage(MemoryStorage):
                 entry.memory_type.value,
                 json.dumps(entry.metadata) if entry.metadata else None,
                 json.dumps(entry.embedding) if entry.embedding else None,
-                entry.created_at,
-                entry.updated_at,
+                created_at_str,
+                updated_at_str,
                 entry.access_count,
                 entry.importance,
                 entry.project_path,
@@ -315,14 +317,18 @@ class SQLiteStorage(MemoryStorage):
         embedding = json.loads(row["embedding"]) if row["embedding"] else None
         tags = json.loads(row["tags"]) if row["tags"] else []
         
+        # Parse datetime strings back to datetime objects
+        created_at = parse_datetime(row["created_at"])
+        updated_at = parse_datetime(row["updated_at"])
+        
         return MemoryEntry(
             id=row["id"],
             content=row["content"],
             memory_type=MemoryType(row["memory_type"]),
             metadata=metadata,
             embedding=embedding,
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
+            created_at=created_at,
+            updated_at=updated_at,
             access_count=row["access_count"],
             importance=row["importance"],
             project_path=row["project_path"],
@@ -397,17 +403,15 @@ class SQLiteStorage(MemoryStorage):
         
         # Boost for recency
         if entry.updated_at:
-            if isinstance(entry.updated_at, str):
-                updated = datetime.fromisoformat(entry.updated_at.replace('Z', '+00:00'))
-            else:
-                updated = entry.updated_at
-            now = utc_now()
-            # Make both timezone-aware or naive for comparison
-            if updated.tzinfo is None:
-                updated = updated.replace(tzinfo=timezone.utc)
-            age_days = (now - updated).days
-            recency_boost = max(0, 1 - (age_days / 365))
-            score = score * 0.7 + recency_boost * 0.3
+            updated = parse_datetime(entry.updated_at)
+            if updated:
+                now = utc_now()
+                # Make both timezone-aware for comparison
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                age_days = (now - updated).days
+                recency_boost = max(0, 1 - (age_days / 365))
+                score = score * 0.7 + recency_boost * 0.3
         
         # Boost for access frequency
         access_boost = min(1.0, entry.access_count / 100)
@@ -441,6 +445,9 @@ class SQLiteStorage(MemoryStorage):
         """Update an existing memory entry."""
         entry.updated_at = utc_now()
         
+        # Convert datetime to ISO string for consistent storage
+        updated_at_str = entry.updated_at.isoformat() if entry.updated_at else None
+        
         with self._transaction() as cursor:
             cursor.execute("""
                 UPDATE memories SET
@@ -460,7 +467,7 @@ class SQLiteStorage(MemoryStorage):
                 entry.memory_type.value,
                 json.dumps(entry.metadata) if entry.metadata else None,
                 json.dumps(entry.embedding) if entry.embedding else None,
-                entry.updated_at,
+                updated_at_str,
                 entry.access_count,
                 entry.importance,
                 entry.project_path,
