@@ -11,6 +11,7 @@ Key Features:
 - Auto-labeling suggestions
 - Comprehensive observability with tracing, metrics, and logging
 - GitHub integration for automated issue processing
+- Plugin system for custom agents
 - Interactive mode for human-in-the-loop processing
 - Parallel agent execution for improved performance
 This package provides an agentic chain that can understand project context,
@@ -26,7 +27,7 @@ from .agents.issue_analyzer import IssueAnalyzer
 from .agents.code_reviewer import CodeReviewer
 from .agents.solution_implementer import SolutionImplementer
 from .agents.similar_issue_detector import SimilarIssueDetector
-from .agents import AgentContext, LLMContext
+from .agents import AgentContext, LLMContext, BaseAgent
 
 # Parallel execution
 from .parallel import (
@@ -111,6 +112,15 @@ from .memory import (
     SimpleEmbedding,
 )
 
+# Plugin system
+from .plugins import (
+    PluginRegistry,
+    PluginInfo,
+    PluginLoader,
+    PluginConfig,
+    SecurityAuditor,
+    PerformanceAnalyzer,
+    DocumentationChecker,
 # Interactive mode
 from .interactive import (
     InteractionType,
@@ -127,6 +137,7 @@ __all__ = [
     # Core chain
     "AgenticChain",
     # Agents
+    "BaseAgent",
     "ProjectAnalyzer",
     "IssueAnalyzer",
     "CodeReviewer",
@@ -205,6 +216,14 @@ __all__ = [
     "SQLiteStorage",
     "EmbeddingProvider",
     "SimpleEmbedding",
+    # Plugin System
+    "PluginRegistry",
+    "PluginInfo",
+    "PluginLoader",
+    "PluginConfig",
+    "SecurityAuditor",
+    "PerformanceAnalyzer",
+    "DocumentationChecker",
     # Interactive Mode
     "InteractionType",
     "InteractionPoint",
