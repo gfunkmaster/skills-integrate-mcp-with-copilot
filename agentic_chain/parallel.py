@@ -20,11 +20,10 @@ Example execution graph:
             └──────────────────────┘
 """
 
-import asyncio
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING
@@ -176,10 +175,12 @@ class DependencyGraph:
                     continue
                 
                 # Check if all dependencies are completed
-                deps_completed = all(
-                    self._nodes.get(dep, AgentNode("", None)).status == AgentStatus.COMPLETED
-                    for dep in node.dependencies
-                )
+                deps_completed = True
+                for dep in node.dependencies:
+                    dep_node = self._nodes.get(dep)
+                    if dep_node is None or dep_node.status != AgentStatus.COMPLETED:
+                        deps_completed = False
+                        break
                 
                 if deps_completed:
                     ready.append(node)
@@ -221,23 +222,35 @@ class DependencyGraph:
     
     def skip_dependents(self, failed_agent: str) -> List[str]:
         """
-        Skip all agents that depend on a failed agent.
+        Skip all agents that depend on a failed agent (directly or transitively).
+        
+        Uses a queue-based approach to avoid recursion issues and ensure
+        thread-safety.
         
         Returns:
             List of skipped agent names.
         """
         skipped = []
+        to_process = [failed_agent]
+        processed = set()
+        
         with self._lock:
-            for node in self._nodes.values():
-                if node.status == AgentStatus.PENDING and failed_agent in node.dependencies:
-                    node.status = AgentStatus.SKIPPED
-                    skipped.append(node.name)
+            while to_process:
+                current = to_process.pop(0)
+                if current in processed:
+                    continue
+                processed.add(current)
+                
+                # Find all agents that depend on the current agent
+                for node in self._nodes.values():
+                    if (node.status == AgentStatus.PENDING and 
+                        current in node.dependencies and 
+                        node.name not in processed):
+                        node.status = AgentStatus.SKIPPED
+                        skipped.append(node.name)
+                        to_process.append(node.name)
         
-        # Recursively skip dependents of skipped agents
-        for agent_name in skipped:
-            skipped.extend(self.skip_dependents(agent_name))
-        
-        return list(set(skipped))
+        return skipped
     
     def all_completed(self) -> bool:
         """Check if all agents are either completed, failed, or skipped."""
