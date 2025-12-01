@@ -5,6 +5,10 @@ Base Agent class for the agentic chain framework.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
+from typing import Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..interactive.handler import InteractionHandler
 
 
 @dataclass
@@ -57,6 +61,15 @@ class AgentContext:
     metadata: dict = field(default_factory=dict)
     llm_context: LLMContext = field(default_factory=LLMContext)
     plugin_results: dict = field(default_factory=dict)
+    interaction_handler: Optional["InteractionHandler"] = field(default=None, repr=False)
+    
+    @property
+    def interactive_mode(self) -> bool:
+        """Check if interactive mode is enabled."""
+        return (
+            self.interaction_handler is not None 
+            and self.interaction_handler.enabled
+        )
     
     def to_dict(self) -> dict:
         """Convert context to dictionary."""
@@ -70,6 +83,7 @@ class AgentContext:
             "metadata": self.metadata,
             "llm_usage": self.llm_context.to_dict(),
             "plugin_results": self.plugin_results,
+            "interactive_mode": self.interactive_mode,
         }
 
 

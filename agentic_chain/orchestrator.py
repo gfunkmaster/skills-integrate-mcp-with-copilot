@@ -1,18 +1,29 @@
 """
 Orchestrator - Chains agents together to solve issues.
+
+Supports both sequential and parallel execution modes for optimal performance.
 """
 
 import json
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from .agents import AgentContext, BaseAgent
 from .agents.project_analyzer import ProjectAnalyzer
 from .agents.issue_analyzer import IssueAnalyzer
 from .agents.code_reviewer import CodeReviewer
 from .agents.solution_implementer import SolutionImplementer
+from .interactive import (
+    InteractionHandler,
+    ConsoleInteractionHandler,
+    InteractionType,
+    InteractionPoint,
+    InteractionOption,
+    InteractionResult,
+    InteractionHistory,
+)
 from .observability import (
     Tracer,
     TracerConfig,
@@ -27,6 +38,14 @@ from .observability import (
     AgentStep,
     ObservabilityData,
 )
+from .parallel import (
+    ExecutionMode,
+    ParallelExecutionConfig,
+    ParallelExecutionResult,
+    ParallelExecutor,
+    DependencyGraph,
+    create_default_dependency_graph,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +58,8 @@ class AgenticChain:
     
     Supports LLM integration for intelligent code generation.
     Includes comprehensive observability with tracing, metrics, and logging.
+    Supports interactive mode for human-in-the-loop processing.
+    Supports both sequential and parallel execution modes for optimal performance.
     
     Example usage:
         # Basic usage (static analysis)
@@ -58,6 +79,18 @@ class AgenticChain:
         chain = AgenticChain(project_path="/path/to/project", enable_tracing=True)
         result = chain.solve_issue(issue_data)
         timeline = chain.get_execution_timeline()
+        
+        # With interactive mode
+        chain = AgenticChain(project_path="/path/to/project", interactive=True)
+        result = chain.solve_issue(issue_data)
+        history = chain.get_interaction_history()
+        # With parallel execution
+        chain = AgenticChain(
+            project_path="/path/to/project",
+            execution_mode=ExecutionMode.PARALLEL,
+            parallel_config=ParallelExecutionConfig(max_workers=4),
+        )
+        result = chain.solve_issue(issue_data)
     """
     
     def __init__(
@@ -68,6 +101,11 @@ class AgenticChain:
         llm_config: Optional[dict] = None,
         enable_tracing: bool = True,
         tracer_config: Optional[TracerConfig] = None,
+        interactive: bool = False,
+        interaction_handler: Optional[InteractionHandler] = None,
+        execution_mode: ExecutionMode = ExecutionMode.SEQUENTIAL,
+        parallel_config: Optional[ParallelExecutionConfig] = None,
+        progress_callback: Optional[Callable[[str, str, float], None]] = None,
     ):
         """
         Initialize the agentic chain.
@@ -82,15 +120,40 @@ class AgenticChain:
                 - api_key: API key (optional, uses env var if not set)
             enable_tracing: Whether to enable distributed tracing.
             tracer_config: Optional configuration for the tracer.
+            interactive: Whether to enable interactive mode.
+            interaction_handler: Custom interaction handler (defaults to ConsoleInteractionHandler).
+            execution_mode: Sequential or parallel execution mode.
+            parallel_config: Configuration for parallel execution.
+            progress_callback: Optional callback(agent_name, status, progress)
+                              for progress tracking during parallel execution.
         """
         self.project_path = Path(project_path).resolve()
-        self.context = AgentContext(project_path=str(self.project_path))
+        
+        # Set up interactive mode (lazy initialization - only create handler when needed)
+        self._interactive = interactive
+        if interaction_handler:
+            self._interaction_handler = interaction_handler
+        elif interactive:
+            self._interaction_handler = ConsoleInteractionHandler(enabled=True)
+        else:
+            self._interaction_handler = None  # No handler created until needed
+        
+        self.context = AgentContext(
+            project_path=str(self.project_path),
+            interaction_handler=self._interaction_handler,
+        )
         
         # Set up observability
         self._tracer = Tracer(tracer_config or TracerConfig(enabled=enable_tracing))
         self._metrics = MetricsCollector()
         self._current_trace_id: Optional[str] = None
         self._execution_timelines: List[ExecutionTimeline] = []
+        
+        # Parallel execution configuration
+        self._execution_mode = execution_mode
+        self._parallel_config = parallel_config or ParallelExecutionConfig()
+        self._progress_callback = progress_callback
+        self._last_parallel_result: Optional[ParallelExecutionResult] = None
         
         # Set up LLM provider
         self._llm_provider = llm_provider
@@ -157,6 +220,167 @@ class AgenticChain:
     def metrics(self) -> MetricsCollector:
         """Get the metrics collector."""
         return self._metrics
+    
+    @property
+    def interactive(self) -> bool:
+        """Check if interactive mode is enabled."""
+        return self._interactive
+    
+    @interactive.setter
+    def interactive(self, value: bool):
+        """Enable or disable interactive mode."""
+        self._interactive = value
+        if value and self._interaction_handler is None:
+            # Lazy initialization when enabling interactive mode
+            self._interaction_handler = ConsoleInteractionHandler(enabled=True)
+            self.context.interaction_handler = self._interaction_handler
+        elif self._interaction_handler:
+            self._interaction_handler.enabled = value
+    
+    @property
+    def interaction_handler(self) -> Optional[InteractionHandler]:
+        """Get the interaction handler."""
+        return self._interaction_handler
+    
+    def get_interaction_history(self) -> Optional[InteractionHistory]:
+        """
+        Get the interaction history from the current session.
+        
+        Returns:
+            InteractionHistory if available, None otherwise.
+        """
+        if self._interaction_handler:
+            return self._interaction_handler.history
+        return None
+    
+    def _handle_agent_interaction(self, agent: BaseAgent) -> bool:
+        """
+        Handle interactive review after an agent completes.
+        
+        Returns True to continue, False to cancel.
+        """
+        # Define interaction points based on agent type
+        if agent.name == "IssueAnalyzer":
+            return self._review_issue_analysis()
+        elif agent.name == "CodeReviewer":
+            return self._review_code_analysis()
+        
+        return True  # Continue by default
+    
+    def _review_issue_analysis(self) -> bool:
+        """Interactive review of issue analysis results."""
+        if not self.context.issue_analysis:
+            return True
+        
+        analysis = self.context.issue_analysis
+        issue_type = analysis.get("issue_type", "unknown")
+        priority = analysis.get("priority", "medium")
+        requirements = analysis.get("requirements", [])
+        
+        message = f"Issue Type: {issue_type}\nPriority: {priority}"
+        if requirements:
+            message += "\n\nRequirements identified:"
+            for i, req in enumerate(requirements[:5], 1):
+                message += f"\n  {i}. {req[:80]}"
+        
+        result = self._interaction_handler.request_confirmation(
+            title="Issue Analysis Complete",
+            message=message,
+            agent_name="IssueAnalyzer",
+            default=True,
+        )
+        
+        # Handle user feedback
+        if result.custom_input or result.feedback:
+            self.context.metadata["user_feedback_analysis"] = (
+                result.custom_input or result.feedback
+            )
+        
+        return result.approved
+    
+    def _review_code_analysis(self) -> bool:
+        """Interactive review of code review results."""
+        if not self.context.code_review:
+            return True
+        
+        review = self.context.code_review
+        relevant_files = review.get("relevant_files", [])
+        issues_found = review.get("potential_issues", [])
+        
+        message = f"Found {len(relevant_files)} relevant files"
+        if relevant_files:
+            message += ":\n"
+            for f in relevant_files[:5]:
+                message += f"  • {f}\n"
+        
+        if issues_found:
+            message += f"\n{len(issues_found)} potential issues identified"
+        
+        result = self._interaction_handler.request_confirmation(
+            title="Code Review Complete",
+            message=message,
+            agent_name="CodeReviewer",
+            default=True,
+        )
+        
+        return result.approved
+    
+    def _handle_solution_review(self) -> bool:
+        """Interactive review of the final proposed solution."""
+        if not self.context.solution:
+            return True
+        
+        solution = self.context.solution
+        proposed_changes = solution.get("proposed_changes", [])
+        risks = solution.get("risks", [])
+        implementation_plan = solution.get("implementation_plan", {})
+        
+        summary = "Proposed Solution:\n"
+        
+        if implementation_plan:
+            complexity = implementation_plan.get("complexity", "unknown")
+            hours = implementation_plan.get("estimated_hours", "N/A")
+            summary += f"\nComplexity: {complexity}, Estimated: {hours} hours"
+        
+        result = self._interaction_handler.request_solution_review(
+            title="Solution Review",
+            solution_summary=summary,
+            proposed_changes=proposed_changes,
+            risks=risks,
+            agent_name="SolutionImplementer",
+        )
+        
+        # Store user feedback for potential refinement
+        if result.custom_input or result.feedback:
+            self.context.metadata["user_feedback_solution"] = (
+                result.custom_input or result.feedback
+            )
+            self.context.metadata["solution_modified"] = True
+        
+        return result.approved
+    def execution_mode(self) -> ExecutionMode:
+        """Get the current execution mode."""
+        return self._execution_mode
+    
+    @execution_mode.setter
+    def execution_mode(self, mode: ExecutionMode):
+        """Set the execution mode."""
+        self._execution_mode = mode
+    
+    @property
+    def parallel_config(self) -> ParallelExecutionConfig:
+        """Get the parallel execution configuration."""
+        return self._parallel_config
+    
+    @parallel_config.setter
+    def parallel_config(self, config: ParallelExecutionConfig):
+        """Set the parallel execution configuration."""
+        self._parallel_config = config
+    
+    @property
+    def last_parallel_result(self) -> Optional[ParallelExecutionResult]:
+        """Get the result of the last parallel execution."""
+        return self._last_parallel_result
         
     def add_agent(self, agent: BaseAgent, position: Optional[int] = None):
         """
@@ -191,6 +415,7 @@ class AgenticChain:
         """
         Run the full agentic chain to solve an issue.
         
+        Supports both sequential and parallel execution modes based on configuration.
         All agent executions are traced and metrics are collected.
         
         Args:
@@ -213,6 +438,7 @@ class AgenticChain:
                 "issue.title": issue_data.get("title", "Unknown"),
                 "issue.number": issue_data.get("number"),
                 "project.path": str(self.project_path),
+                "execution.mode": self._execution_mode.value,
             }
         ) as root_span:
             self._current_trace_id = root_span.trace_id
@@ -220,14 +446,17 @@ class AgenticChain:
             # Create execution timeline
             timeline = ExecutionTimeline(trace_id=root_span.trace_id)
             timeline.metadata["issue_title"] = issue_data.get("title", "Unknown")
+            timeline.metadata["execution_mode"] = self._execution_mode.value
             
             logger.info(f"Starting agentic chain for issue: {issue_data.get('title', 'Unknown')}")
+            logger.info(f"Execution mode: {self._execution_mode.value}")
             if self._llm_provider:
                 logger.info(f"LLM enabled: {self._llm_provider.config.provider}/{self._llm_provider.config.model}")
                 root_span.set_attribute("llm.provider", self._llm_provider.config.provider)
                 root_span.set_attribute("llm.model", self._llm_provider.config.model)
             
             chain_success = True
+            user_cancelled = False
             for agent in self.agents:
                 start_time = time.perf_counter()
                 
@@ -265,6 +494,19 @@ class AgenticChain:
                         
                         logger.info(f"Agent {agent.name} completed successfully in {duration:.3f}s")
                         
+                        # Interactive mode: request review at key decision points
+                        if (
+                            self._interactive 
+                            and self._interaction_handler is not None
+                            and self._interaction_handler.enabled
+                        ):
+                            should_continue = self._handle_agent_interaction(agent)
+                            if not should_continue:
+                                user_cancelled = True
+                                chain_success = False
+                                logger.info("User cancelled operation in interactive mode")
+                                break
+                        
                     except Exception as e:
                         duration = time.perf_counter() - start_time
                         agent_span.record_exception(e)
@@ -282,6 +524,25 @@ class AgenticChain:
                         raise
                     finally:
                         timeline.add_step(step)
+            # Execute based on mode
+            if self._execution_mode == ExecutionMode.PARALLEL:
+                chain_success = self._execute_parallel(timeline, root_span)
+            else:
+                chain_success = self._execute_sequential(timeline, root_span)
+            
+            # Interactive mode: final solution review
+            if (
+                chain_success 
+                and not user_cancelled
+                and self._interactive 
+                and self._interaction_handler is not None
+                and self._interaction_handler.enabled
+            ):
+                chain_success = self._handle_solution_review()
+            
+            # Complete interaction history
+            if self._interaction_handler:
+                self._interaction_handler.history.complete()
             
             # Complete timeline
             timeline.complete(success=chain_success)
@@ -304,6 +565,141 @@ class AgenticChain:
                 
         self._executed = True
         return self.get_result()
+    
+    def _execute_sequential(self, timeline: ExecutionTimeline, root_span) -> bool:
+        """
+        Execute agents sequentially (original behavior).
+        
+        Args:
+            timeline: The execution timeline to update.
+            root_span: The root tracing span.
+            
+        Returns:
+            True if all agents completed successfully.
+        """
+        chain_success = True
+        for agent in self.agents:
+            start_time = time.perf_counter()
+            
+            # Create span for each agent
+            with self._tracer.start_span(
+                f"agent.{agent.name}",
+                kind=SpanKind.INTERNAL,
+                attributes={
+                    "agent.name": agent.name,
+                    "agent.type": type(agent).__name__,
+                }
+            ) as agent_span:
+                # Create agent step for timeline
+                step = AgentStep(
+                    name=f"agent.{agent.name}",
+                    agent_name=agent.name,
+                    status="running",
+                )
+                step.start_time = agent_span.start_time
+                
+                logger.info(f"Executing agent: {agent.name}")
+                try:
+                    self.context = agent.execute(self.context)
+                    
+                    duration = time.perf_counter() - start_time
+                    agent_span.set_attribute("execution.duration_seconds", duration)
+                    agent_span.set_status(SpanStatus.OK)
+                    
+                    # Update step
+                    step.status = "success"
+                    step.duration_ms = duration * 1000
+                    
+                    # Record metrics
+                    self._metrics.record_execution_time(agent.name, duration, success=True)
+                    
+                    logger.info(f"Agent {agent.name} completed successfully in {duration:.3f}s")
+                    
+                except Exception as e:
+                    duration = time.perf_counter() - start_time
+                    agent_span.record_exception(e)
+                    
+                    # Update step
+                    step.status = "error"
+                    step.error_message = str(e)
+                    step.duration_ms = duration * 1000
+                    
+                    # Record metrics
+                    self._metrics.record_execution_time(agent.name, duration, success=False)
+                    
+                    chain_success = False
+                    logger.error(f"Agent {agent.name} failed: {str(e)}")
+                    raise
+                finally:
+                    timeline.add_step(step)
+        
+        return chain_success
+    
+    def _execute_parallel(self, timeline: ExecutionTimeline, root_span) -> bool:
+        """
+        Execute agents in parallel where dependencies allow.
+        
+        Args:
+            timeline: The execution timeline to update.
+            root_span: The root tracing span.
+            
+        Returns:
+            True if all agents completed successfully.
+        """
+        # Create dependency graph with default dependencies
+        graph = create_default_dependency_graph(self.agents)
+        
+        # Create progress callback that also updates timeline
+        def progress_with_timeline(agent_name: str, status: str, progress: float):
+            step = AgentStep(
+                name=f"agent.{agent_name}",
+                agent_name=agent_name,
+                status=status,
+            )
+            timeline.add_step(step)
+            
+            # Forward to user callback if configured
+            if self._progress_callback:
+                self._progress_callback(agent_name, status, progress)
+        
+        # Create executor
+        executor = ParallelExecutor(
+            config=self._parallel_config,
+            progress_callback=progress_with_timeline,
+        )
+        
+        # Execute
+        logger.info(f"Starting parallel execution with max_workers={self._parallel_config.max_workers}")
+        result = executor.execute(graph, self.context)
+        self._last_parallel_result = result
+        
+        # Record metrics for all agents
+        for agent_name, exec_time in result.agent_times.items():
+            success = agent_name in result.completed_agents
+            self._metrics.record_execution_time(agent_name, exec_time, success=success)
+        
+        # Log results
+        logger.info(f"Parallel execution completed in {result.total_execution_time:.3f}s")
+        logger.info(f"Completed: {result.completed_agents}")
+        if result.failed_agents:
+            logger.error(f"Failed: {result.failed_agents}")
+        if result.skipped_agents:
+            logger.warning(f"Skipped: {result.skipped_agents}")
+        
+        # Add parallel execution metadata to span
+        root_span.set_attribute("parallel.total_time_seconds", result.total_execution_time)
+        root_span.set_attribute("parallel.completed_count", len(result.completed_agents))
+        root_span.set_attribute("parallel.failed_count", len(result.failed_agents))
+        root_span.set_attribute("parallel.skipped_count", len(result.skipped_agents))
+        
+        # Handle failures based on configuration
+        if not result.success and not self._parallel_config.continue_on_partial_failure:
+            failed_info = "; ".join(
+                f"{f['name']}: {f['error']}" for f in result.failed_agents
+            )
+            raise RuntimeError(f"Parallel execution failed: {failed_info}")
+        
+        return result.success
     
     def analyze_project(self) -> dict:
         """
@@ -522,4 +918,5 @@ class AgenticChain:
         if self._llm_provider:
             llm_info = f", llm={self._llm_provider.config.provider}"
         tracing_info = f", tracing={'enabled' if self._tracer.config.enabled else 'disabled'}"
-        return f"AgenticChain(project='{self.project_path}', agents={agent_names}{llm_info}{tracing_info})"
+        interactive_info = f", interactive={'enabled' if self._interactive else 'disabled'}"
+        return f"AgenticChain(project='{self.project_path}', agents={agent_names}{llm_info}{tracing_info}{interactive_info})"
