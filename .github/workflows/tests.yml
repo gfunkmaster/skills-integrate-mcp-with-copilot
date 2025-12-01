@@ -20,6 +20,9 @@ on:
       - 'pytest.ini'
       - '.github/workflows/tests.yml'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
