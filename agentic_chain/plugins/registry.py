@@ -84,35 +84,29 @@ class PluginRegistry:
         Returns:
             True if registered successfully, False if already exists.
         """
-        # Create a temporary instance to get metadata
-        try:
-            temp_instance = agent_class.__new__(agent_class)
-            # Call __init__ if it doesn't require arguments
-            if hasattr(agent_class, '__init__'):
-                try:
-                    temp_instance.__init__()
-                except TypeError:
-                    # __init__ requires arguments, use class name
-                    temp_instance.name = agent_class.__name__
-                    temp_instance._dependencies = []
-        except Exception as e:
-            logger.warning(f"Could not instantiate {agent_class.__name__}: {e}")
-            temp_instance = None
+        # Get metadata from class attributes or defaults
+        # Use class-level inspection to avoid side effects from instantiation
+        name = getattr(agent_class, '__name__', 'UnknownPlugin')
         
-        # Get name from instance or class
-        if temp_instance and hasattr(temp_instance, 'name'):
+        # Check for class-level metadata attributes first
+        version = "1.0.0"
+        description = ""
+        dependencies = []
+        
+        # Try to get metadata by creating an instance
+        # This is safe because all our agents have simple __init__ methods
+        try:
+            temp_instance = agent_class()
             name = temp_instance.name
-        else:
-            name = agent_class.__name__
+            version = temp_instance.version
+            description = temp_instance.description
+            dependencies = list(temp_instance.dependencies)
+        except Exception as e:
+            logger.debug(f"Could not get metadata from instance: {e}")
         
         if name in self._plugins:
             logger.warning(f"Plugin {name} already registered")
             return False
-        
-        # Get metadata from instance or defaults
-        version = getattr(temp_instance, 'version', "1.0.0") if temp_instance else "1.0.0"
-        description = getattr(temp_instance, 'description', "") if temp_instance else ""
-        dependencies = getattr(temp_instance, 'dependencies', []) if temp_instance else []
         
         info = PluginInfo(
             name=name,

@@ -172,9 +172,12 @@ class PluginLoader:
             return []
         
         loaded = []
+        # Use a unique module name to avoid conflicts
+        module_name = f"_agentic_plugin_{path.stem}_{id(path)}"
+        module_added = False
+        
         try:
             # Load the module
-            module_name = path.stem
             spec = importlib.util.spec_from_file_location(module_name, str(path))
             if spec is None or spec.loader is None:
                 logger.error(f"Could not load spec for: {file_path}")
@@ -182,6 +185,7 @@ class PluginLoader:
             
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
+            module_added = True
             spec.loader.exec_module(module)
             self._loaded_modules[str(path)] = module
             
@@ -203,6 +207,9 @@ class PluginLoader:
             
         except Exception as e:
             logger.error(f"Failed to load plugins from {file_path}: {e}")
+            # Clean up module from sys.modules on failure
+            if module_added and module_name in sys.modules:
+                del sys.modules[module_name]
         
         return loaded
     

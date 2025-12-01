@@ -149,7 +149,7 @@ class SecurityAuditor(BaseAgent):
     def _scan_directory(self, directory: Path, extensions: List[str]) -> List[dict]:
         """Scan directory for security issues."""
         findings = []
-        exclude_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
+        exclude_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", "tests", "test"}
         
         for root, dirs, files in os.walk(directory):
             dirs[:] = [d for d in dirs if d not in exclude_dirs]
@@ -157,6 +157,10 @@ class SecurityAuditor(BaseAgent):
             for filename in files:
                 ext = os.path.splitext(filename)[1].lower()
                 if ext not in extensions:
+                    continue
+                
+                # Skip test files to reduce false positives
+                if filename.startswith('test_') or filename.endswith('_test.py'):
                     continue
                 
                 file_path = Path(root) / filename

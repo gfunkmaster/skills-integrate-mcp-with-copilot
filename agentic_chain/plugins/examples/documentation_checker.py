@@ -167,19 +167,36 @@ class DocumentationChecker(BaseAgent):
         return findings, stats
     
     def _has_module_docstring(self, content: str) -> bool:
-        """Check if module has a docstring."""
-        # Skip shebang and encoding declarations
+        """
+        Check if module has a proper docstring.
+        
+        A module docstring must be the first statement in the module,
+        after any comments or encoding declarations.
+        """
         lines = content.split('\n')
-        start_line = 0
+        
+        # Find the first non-comment, non-empty line
         for i, line in enumerate(lines):
             stripped = line.strip()
-            if stripped.startswith('#') or stripped.startswith('# -*-') or stripped.startswith('#!'):
+            
+            # Skip empty lines
+            if not stripped:
                 continue
-            start_line = i
-            break
+            
+            # Skip comments (shebang, encoding, regular comments)
+            if stripped.startswith('#'):
+                continue
+            
+            # First non-comment line should be a docstring for it to be a module docstring
+            # Check if it starts with triple quotes (without any code before it on the line)
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                return True
+            
+            # If the first statement is not a docstring, module has no docstring
+            return False
         
-        remaining = '\n'.join(lines[start_line:]).strip()
-        return remaining.startswith('"""') or remaining.startswith("'''")
+        # Empty file or only comments
+        return False
     
     def _analyze_file_content(self, file_path: str, content: str) -> tuple:
         """Analyze file content for documentation."""

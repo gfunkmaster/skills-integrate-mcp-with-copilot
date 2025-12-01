@@ -38,8 +38,9 @@ class PerformanceAnalyzer(BaseAgent):
     """
     
     # Performance anti-patterns
+    # Note: These are heuristic patterns that may have false positives
     LOOP_PATTERNS = [
-        (r'for\s+\w+\s+in\s+\w+:[\s\n]+.*for\s+\w+\s+in\s+\w+:', "Nested loops detected - O(n²) complexity"),
+        (r'for\s+\w+\s+in\s+[^:]+:\s*\n\s+for\s+\w+\s+in\s+', "Nested loops detected - O(n²) complexity"),
         (r'\.append\([^)]+\)\s*$', "List append in loop - consider list comprehension"),
         (r'while\s+True:', "Infinite loop pattern - ensure proper exit condition"),
     ]
