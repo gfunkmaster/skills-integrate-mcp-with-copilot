@@ -457,75 +457,8 @@ class AgenticChain:
                 root_span.set_attribute("llm.provider", self._llm_provider.config.provider)
                 root_span.set_attribute("llm.model", self._llm_provider.config.model)
             
-            chain_success = True
             user_cancelled = False
-            for agent in self.agents:
-                start_time = time.perf_counter()
-                
-                # Create span for each agent
-                with self._tracer.start_span(
-                    f"agent.{agent.name}",
-                    kind=SpanKind.INTERNAL,
-                    attributes={
-                        "agent.name": agent.name,
-                        "agent.type": type(agent).__name__,
-                    }
-                ) as agent_span:
-                    # Create agent step for timeline
-                    step = AgentStep(
-                        name=f"agent.{agent.name}",
-                        agent_name=agent.name,
-                        status="running",
-                    )
-                    step.start_time = agent_span.start_time
-                    
-                    logger.info(f"Executing agent: {agent.name}")
-                    try:
-                        self.context = agent.execute(self.context)
-                        
-                        duration = time.perf_counter() - start_time
-                        agent_span.set_attribute("execution.duration_seconds", duration)
-                        agent_span.set_status(SpanStatus.OK)
-                        
-                        # Update step
-                        step.status = "success"
-                        step.duration_ms = duration * 1000
-                        
-                        # Record metrics
-                        self._metrics.record_execution_time(agent.name, duration, success=True)
-                        
-                        logger.info(f"Agent {agent.name} completed successfully in {duration:.3f}s")
-                        
-                        # Interactive mode: request review at key decision points
-                        if (
-                            self._interactive 
-                            and self._interaction_handler is not None
-                            and self._interaction_handler.enabled
-                        ):
-                            should_continue = self._handle_agent_interaction(agent)
-                            if not should_continue:
-                                user_cancelled = True
-                                chain_success = False
-                                logger.info("User cancelled operation in interactive mode")
-                                break
-                        
-                    except Exception as e:
-                        duration = time.perf_counter() - start_time
-                        agent_span.record_exception(e)
-                        
-                        # Update step
-                        step.status = "error"
-                        step.error_message = str(e)
-                        step.duration_ms = duration * 1000
-                        
-                        # Record metrics
-                        self._metrics.record_execution_time(agent.name, duration, success=False)
-                        
-                        chain_success = False
-                        logger.error(f"Agent {agent.name} failed: {str(e)}")
-                        raise
-                    finally:
-                        timeline.add_step(step)
+            
             # Execute based on mode
             if self._execution_mode == ExecutionMode.PARALLEL:
                 chain_success = self._execute_parallel(timeline, root_span)
