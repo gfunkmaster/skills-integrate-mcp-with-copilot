@@ -13,6 +13,15 @@ from .tracer import Span, SpanStatus
 from .metrics import MetricsCollector
 
 
+def _status_from_span_status(span_status: SpanStatus) -> str:
+    """Convert SpanStatus to string status for AgentStep."""
+    status_map = {
+        SpanStatus.OK: "success",
+        SpanStatus.ERROR: "error",
+    }
+    return status_map.get(span_status, "pending")
+
+
 @dataclass
 class AgentStep:
     """
@@ -35,7 +44,7 @@ class AgentStep:
     @classmethod
     def from_span(cls, span: Span) -> "AgentStep":
         """Create an AgentStep from a Span."""
-        status = "success" if span.status == SpanStatus.OK else "error" if span.status == SpanStatus.ERROR else "pending"
+        status = _status_from_span_status(span.status)
         
         return cls(
             name=span.name,

@@ -7,6 +7,7 @@ for extracurricular activities at Mergington High School.
 Also includes observability API endpoints for the Agentic Chain dashboard.
 """
 
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -210,7 +211,6 @@ def update_observability_data(data: dict):
         )[:100]
     
     # Update timestamp
-    from datetime import datetime
     _observability_data["generated_at"] = datetime.now().isoformat()
     
     return {"status": "ok"}

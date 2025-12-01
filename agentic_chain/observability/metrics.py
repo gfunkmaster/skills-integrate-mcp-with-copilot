@@ -14,6 +14,10 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 from functools import wraps
 
 
+# Default histogram bucket boundaries (in seconds)
+DEFAULT_HISTOGRAM_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+
+
 class MetricType(str, Enum):
     """Type of metric."""
     COUNTER = "counter"
@@ -45,7 +49,7 @@ class Metric:
     values: List[MetricValue] = field(default_factory=list)
     
     # For histograms
-    buckets: List[float] = field(default_factory=lambda: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0])
+    buckets: List[float] = field(default_factory=lambda: DEFAULT_HISTOGRAM_BUCKETS.copy())
     
     def record(self, value: float, labels: Optional[Dict[str, str]] = None) -> None:
         """Record a metric value."""
