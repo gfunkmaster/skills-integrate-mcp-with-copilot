@@ -1,23 +1,56 @@
 """
 Code Reviewer Agent - Reviews code and suggests improvements.
+
+This agent can optionally use LLM to provide intelligent code review
+suggestions in addition to static analysis.
 """
 
+import json
+import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from . import BaseAgent, AgentContext
+
+if TYPE_CHECKING:
+    from ..llm import LLMProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 class CodeReviewer(BaseAgent):
     """
     Reviews code in the project to identify issues, patterns,
     and areas that need improvement based on the issue analysis.
+    
+    When an LLM provider is configured, provides AI-powered code
+    review suggestions in addition to static analysis.
     """
     
-    def __init__(self, name: str = "CodeReviewer"):
+    def __init__(
+        self,
+        name: str = "CodeReviewer",
+        llm_provider: Optional["LLMProvider"] = None,
+        max_files_for_llm: int = 5,
+        max_lines_per_file: int = 500,
+    ):
         super().__init__(name)
+        self._llm_provider = llm_provider
+        self.max_files_for_llm = max_files_for_llm
+        self.max_lines_per_file = max_lines_per_file
+    
+    @property
+    def llm_provider(self) -> Optional["LLMProvider"]:
+        """Get the LLM provider."""
+        return self._llm_provider
+    
+    @llm_provider.setter
+    def llm_provider(self, provider: "LLMProvider"):
+        """Set the LLM provider."""
+        self._llm_provider = provider
         
     def execute(self, context: AgentContext) -> AgentContext:
         """
@@ -28,6 +61,7 @@ class CodeReviewer(BaseAgent):
             
         project_path = Path(context.project_path)
         
+        # Static analysis (always performed)
         review = {
             "relevant_files": self._find_relevant_files(context),
             "code_quality": self._analyze_code_quality(context),
@@ -41,9 +75,140 @@ class CodeReviewer(BaseAgent):
             full_path = project_path / file_path
             if full_path.exists():
                 review["file_analyses"][file_path] = self._analyze_file(full_path)
+        
+        # LLM-powered code review (if provider is available)
+        if self._llm_provider:
+            try:
+                llm_review = self._perform_llm_review(
+                    review["relevant_files"],
+                    project_path,
+                    context,
+                )
+                if llm_review:
+                    review["llm_insights"] = llm_review
+                    review["llm_enhanced"] = True
+            except Exception as e:
+                logger.warning(f"LLM code review failed: {e}")
+                review["llm_enhanced"] = False
+        else:
+            review["llm_enhanced"] = False
                 
         context.code_review = review
         return context
+    
+    def _perform_llm_review(
+        self,
+        relevant_files: list,
+        project_path: Path,
+        context: AgentContext,
+    ) -> Optional[dict]:
+        """Perform LLM-powered code review."""
+        if not self._llm_provider:
+            return None
+        
+        from ..llm import LLMMessage, format_code_review_prompt
+        from ..llm.base import MessageRole
+        from ..llm.prompts import CODE_REVIEW_SYSTEM
+        
+        # Get issue summary
+        issue_summary = "No issue context provided"
+        if context.issue_analysis:
+            title = context.issue_analysis.get("title", "")
+            issue_type = context.issue_analysis.get("issue_type", "unknown")
+            requirements = context.issue_analysis.get("requirements", [])[:3]
+            issue_summary = f"Type: {issue_type}\nTitle: {title}"
+            if requirements:
+                issue_summary += f"\nRequirements:\n" + "\n".join(f"- {r}" for r in requirements)
+        
+        # Review the most relevant files
+        file_reviews = []
+        files_to_review = relevant_files[:self.max_files_for_llm]
+        
+        for file_path in files_to_review:
+            full_path = project_path / file_path
+            if not full_path.exists():
+                continue
+            
+            try:
+                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    lines = f.readlines()
+                    # Limit lines to prevent token overflow
+                    if len(lines) > self.max_lines_per_file:
+                        code = "".join(lines[:self.max_lines_per_file])
+                        code += f"\n# ... (truncated, {len(lines) - self.max_lines_per_file} more lines)"
+                    else:
+                        code = "".join(lines)
+            except (IOError, OSError):
+                continue
+            
+            # Detect language from extension
+            ext = full_path.suffix.lower()
+            language_map = {
+                ".py": "python", ".js": "javascript", ".ts": "typescript",
+                ".go": "go", ".java": "java", ".rb": "ruby",
+                ".rs": "rust", ".cpp": "cpp", ".c": "c",
+            }
+            language = language_map.get(ext, "")
+            
+            # Build prompt
+            prompt = format_code_review_prompt(
+                code=code,
+                file_path=file_path,
+                issue_summary=issue_summary,
+                language=language,
+            )
+            
+            messages = [
+                LLMMessage(role=MessageRole.SYSTEM, content=CODE_REVIEW_SYSTEM),
+                LLMMessage(role=MessageRole.USER, content=prompt),
+            ]
+            
+            response = self._llm_provider.complete(messages)
+            
+            # Track usage
+            if response.usage:
+                context.llm_context.add_usage(
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens,
+                    cost=response.usage.estimated_cost,
+                )
+                context.llm_context.provider = self._llm_provider.config.provider
+                context.llm_context.model = response.model
+            
+            context.llm_context.responses.append({
+                "type": "code_review",
+                "file": file_path,
+                "content": response.content,
+                "model": response.model,
+            })
+            
+            # Parse review from response
+            parsed_review = self._parse_review_response(response.content)
+            
+            file_reviews.append({
+                "file": file_path,
+                "raw_content": response.content,
+                "parsed": parsed_review,
+                "model": response.model,
+                "tokens_used": response.usage.total_tokens if response.usage else 0,
+            })
+        
+        return {
+            "file_reviews": file_reviews,
+            "files_reviewed": len(file_reviews),
+        }
+    
+    def _parse_review_response(self, content: str) -> Optional[dict]:
+        """Parse JSON from LLM review response."""
+        try:
+            # Try to find JSON block in response
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(1))
+            # Try parsing the entire response as JSON
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return None
     
     def _find_relevant_files(self, context: AgentContext) -> list:
         """Find files relevant to the issue."""

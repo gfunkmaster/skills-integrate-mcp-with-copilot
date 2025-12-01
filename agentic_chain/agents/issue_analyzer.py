@@ -3,12 +3,23 @@ Issue Analyzer Agent - Parses and understands issues to extract actionable requi
 
 This is the core component of Agentic Chain's GitHub-first lightweight issue analysis,
 designed to provide insights in under 5 seconds with zero configuration.
+
+When an LLM provider is configured, provides AI-powered issue classification
+and requirement extraction in addition to static analysis.
 """
 
+import json
+import logging
 import re
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TYPE_CHECKING
 
 from . import BaseAgent, AgentContext
+
+if TYPE_CHECKING:
+    from ..llm import LLMProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 class IssueAnalyzer(BaseAgent):
@@ -21,6 +32,7 @@ class IssueAnalyzer(BaseAgent):
     - Priority scoring algorithm
     - Sentiment analysis for urgency detection
     - Auto-labeling suggestions
+    - Optional LLM-powered deep analysis
     
     Attributes:
         MIN_PRIORITY_SCORE: Minimum priority score value (default 1)
@@ -31,8 +43,23 @@ class IssueAnalyzer(BaseAgent):
     MIN_PRIORITY_SCORE = 1
     MAX_PRIORITY_SCORE = 100
     
-    def __init__(self, name: str = "IssueAnalyzer"):
+    def __init__(
+        self,
+        name: str = "IssueAnalyzer",
+        llm_provider: Optional["LLMProvider"] = None,
+    ):
         super().__init__(name)
+        self._llm_provider = llm_provider
+    
+    @property
+    def llm_provider(self) -> Optional["LLMProvider"]:
+        """Get the LLM provider."""
+        return self._llm_provider
+    
+    @llm_provider.setter
+    def llm_provider(self, provider: "LLMProvider"):
+        """Set the LLM provider."""
+        self._llm_provider = provider
         
     def execute(self, context: AgentContext) -> AgentContext:
         """
@@ -43,6 +70,7 @@ class IssueAnalyzer(BaseAgent):
             
         issue = context.issue_data
         
+        # Static analysis (always performed)
         analysis = {
             "title": issue.get("title", ""),
             "issue_type": self._classify_issue(issue),
@@ -57,8 +85,153 @@ class IssueAnalyzer(BaseAgent):
             "suggested_labels": self._suggest_labels(issue),
         }
         
+        # LLM-powered analysis (if provider is available)
+        if self._llm_provider:
+            try:
+                llm_analysis = self._perform_llm_analysis(issue, context)
+                if llm_analysis:
+                    analysis["llm_insights"] = llm_analysis
+                    analysis["llm_enhanced"] = True
+                    # Merge LLM insights with static analysis
+                    self._merge_llm_insights(analysis, llm_analysis)
+            except Exception as e:
+                logger.warning(f"LLM issue analysis failed: {e}")
+                analysis["llm_enhanced"] = False
+        else:
+            analysis["llm_enhanced"] = False
+        
         context.issue_analysis = analysis
         return context
+    
+    def _perform_llm_analysis(
+        self,
+        issue: dict,
+        context: AgentContext,
+    ) -> Optional[dict]:
+        """Perform LLM-powered issue analysis."""
+        if not self._llm_provider:
+            return None
+        
+        from ..llm import LLMMessage, format_issue_classification_prompt
+        from ..llm.base import MessageRole
+        from ..llm.prompts import ISSUE_CLASSIFICATION_SYSTEM
+        
+        # Build project context summary if available
+        project_context = None
+        if context.project_analysis:
+            proj = context.project_analysis
+            context_parts = []
+            if proj.get("languages"):
+                context_parts.append(f"Languages: {', '.join(proj['languages'].keys())}")
+            if proj.get("patterns", {}).get("framework"):
+                context_parts.append(f"Framework: {proj['patterns']['framework']}")
+            project_context = "\n".join(context_parts) if context_parts else None
+        
+        # Format labels
+        labels = issue.get("labels", [])
+        label_names = ", ".join(
+            l.get("name", "") if isinstance(l, dict) else str(l)
+            for l in labels
+        ) or "None"
+        
+        # Build prompt
+        prompt = format_issue_classification_prompt(
+            issue_title=issue.get("title", "No title"),
+            issue_body=issue.get("body", ""),
+            labels=label_names,
+            project_context=project_context,
+        )
+        
+        messages = [
+            LLMMessage(role=MessageRole.SYSTEM, content=ISSUE_CLASSIFICATION_SYSTEM),
+            LLMMessage(role=MessageRole.USER, content=prompt),
+        ]
+        
+        response = self._llm_provider.complete(messages)
+        
+        # Track usage
+        if response.usage:
+            context.llm_context.add_usage(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                cost=response.usage.estimated_cost,
+            )
+            context.llm_context.provider = self._llm_provider.config.provider
+            context.llm_context.model = response.model
+        
+        context.llm_context.responses.append({
+            "type": "issue_classification",
+            "content": response.content,
+            "model": response.model,
+        })
+        
+        # Try to parse JSON from response
+        parsed_insights = self._parse_llm_response(response.content)
+        
+        return {
+            "raw_content": response.content,
+            "parsed": parsed_insights,
+            "model": response.model,
+            "tokens_used": response.usage.total_tokens if response.usage else 0,
+        }
+    
+    def _parse_llm_response(self, content: str) -> Optional[dict]:
+        """Parse JSON from LLM response content."""
+        try:
+            # Try to find JSON block in response
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(1))
+            # Try parsing the entire response as JSON
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return None
+    
+    def _merge_llm_insights(self, analysis: dict, llm_insights: dict) -> None:
+        """Merge LLM insights into the static analysis."""
+        parsed = llm_insights.get("parsed")
+        if not parsed:
+            return
+        
+        # Update issue type if LLM provides one
+        if parsed.get("issue_type"):
+            analysis["llm_issue_type"] = parsed["issue_type"]
+        
+        # Update priority if LLM provides one
+        if parsed.get("priority"):
+            analysis["llm_priority"] = parsed["priority"]
+        
+        # Add LLM-extracted requirements
+        if parsed.get("key_requirements"):
+            analysis["llm_requirements"] = parsed["key_requirements"]
+        
+        # Add complexity estimate
+        if parsed.get("complexity"):
+            analysis["complexity"] = parsed["complexity"]
+        
+        # Add estimated hours
+        if parsed.get("estimated_hours"):
+            analysis["estimated_hours"] = parsed["estimated_hours"]
+        
+        # Add summary
+        if parsed.get("summary"):
+            analysis["llm_summary"] = parsed["summary"]
+        
+        # Add suggested approach
+        if parsed.get("suggested_approach"):
+            analysis["suggested_approach"] = parsed["suggested_approach"]
+        
+        # Add affected areas
+        if parsed.get("affected_areas"):
+            analysis["llm_affected_areas"] = parsed["affected_areas"]
+        
+        # Add potential risks
+        if parsed.get("potential_risks"):
+            analysis["potential_risks"] = parsed["potential_risks"]
+        
+        # Add clarification questions
+        if parsed.get("clarification_needed"):
+            analysis["clarification_needed"] = parsed["clarification_needed"]
     
     def _calculate_priority_score(self, issue: dict) -> int:
         """

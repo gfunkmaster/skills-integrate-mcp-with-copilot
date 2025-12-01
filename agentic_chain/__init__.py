@@ -10,6 +10,7 @@ Key Features:
 - Sentiment analysis for urgency detection
 - Auto-labeling suggestions
 - Comprehensive observability with tracing, metrics, and logging
+- GitHub integration for automated issue processing
 This package provides an agentic chain that can understand project context,
 analyze issues, review code, and implement solutions in external projects.
 
@@ -59,6 +60,12 @@ from .observability import (
     ObservabilityData,
     ExecutionTimeline,
     AgentStep,
+# GitHub integration
+from .github_integration import (
+    WebhookHandler,
+    IssueProcessor,
+    CommentFormatter,
+    GitHubConfig,
 )
 
 __version__ = "0.1.0"
@@ -104,4 +111,9 @@ __all__ = [
     "ObservabilityData",
     "ExecutionTimeline",
     "AgentStep",
+    # GitHub Integration
+    "WebhookHandler",
+    "IssueProcessor",
+    "CommentFormatter",
+    "GitHubConfig",
 ]

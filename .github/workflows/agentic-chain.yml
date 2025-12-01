@@ -1,0 +1,357 @@
+name: Agentic Chain Issue Analysis
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  analyze-issue:
+    runs-on: ubuntu-latest
+    # Only run on issue opened events
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install pyyaml
+
+      - name: Load configuration
+        id: config
+        run: |
+          if [ -f ".github/agentic-chain.yml" ]; then
+            echo "config_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "config_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Analyze issue
+        id: analyze
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python - << 'EOF'
+          import os
+          import json
+          
+          from agentic_chain.github_integration import IssueProcessor, GitHubConfig
+          
+          # Load config if exists
+          config_path = ".github/agentic-chain.yml"
+          if os.path.exists(config_path):
+              config = GitHubConfig.from_file(config_path)
+          else:
+              config = GitHubConfig()
+          
+          # Skip if disabled
+          if not config.enabled or not config.analysis.enabled:
+              print("Analysis is disabled in configuration")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("skip=true\n")
+              exit(0)
+          
+          # Prepare issue data
+          issue_data = {
+              "title": os.environ.get("ISSUE_TITLE", ""),
+              "body": os.environ.get("ISSUE_BODY", ""),
+              "labels": json.loads(os.environ.get("ISSUE_LABELS", "[]")),
+          }
+          
+          # Process the issue
+          processor = IssueProcessor(config=config, project_path=".")
+          result = processor.process_issue(issue_data)
+          
+          if result.get("skipped"):
+              print(f"Skipped: {result.get('reason')}")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("skip=true\n")
+              exit(0)
+          
+          # Save results
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("skip=false\n")
+          
+          # Save comment to file
+          if result.get("comment"):
+              with open("/tmp/comment.md", "w") as f:
+                  f.write(result["comment"])
+          
+          # Save labels to file
+          if result.get("suggested_labels"):
+              with open("/tmp/labels.json", "w") as f:
+                  json.dump(result["suggested_labels"], f)
+          
+          print("Analysis complete")
+          EOF
+
+      - name: Post analysis comment
+        if: steps.analyze.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read comment from file
+            let comment = '';
+            try {
+              comment = fs.readFileSync('/tmp/comment.md', 'utf8');
+            } catch (e) {
+              console.log('No comment file found');
+              return;
+            }
+            
+            if (!comment) {
+              console.log('Empty comment, skipping');
+              return;
+            }
+            
+            // Post comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+            
+            console.log('Comment posted successfully');
+
+      - name: Add suggested labels
+        if: steps.analyze.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read labels from file
+            let labels = [];
+            try {
+              const labelsJson = fs.readFileSync('/tmp/labels.json', 'utf8');
+              labels = JSON.parse(labelsJson);
+            } catch (e) {
+              console.log('No labels file found');
+              return;
+            }
+            
+            if (!labels.length) {
+              console.log('No labels to add');
+              return;
+            }
+            
+            // Get existing labels in the repo
+            const { data: repoLabels } = await github.rest.issues.listLabelsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const existingLabelNames = repoLabels.map(l => l.name.toLowerCase());
+            
+            // Filter to only labels that exist in the repo
+            const labelsToAdd = labels.filter(l => 
+              existingLabelNames.includes(l.toLowerCase())
+            );
+            
+            if (!labelsToAdd.length) {
+              console.log('No matching labels found in repository');
+              return;
+            }
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: labelsToAdd
+            });
+            
+            console.log(`Added labels: ${labelsToAdd.join(', ')}`);
+
+  handle-mention:
+    runs-on: ubuntu-latest
+    # Only run on issue comment events with @agentic-chain mention
+    if: |
+      github.event_name == 'issue_comment' && 
+      github.event.action == 'created' &&
+      contains(github.event.comment.body, '@agentic-chain')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install pyyaml
+
+      - name: Handle mention command
+        id: handle
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python - << 'EOF'
+          import os
+          import json
+          
+          from agentic_chain.github_integration import IssueProcessor, GitHubConfig
+          
+          # Load config if exists
+          config_path = ".github/agentic-chain.yml"
+          if os.path.exists(config_path):
+              config = GitHubConfig.from_file(config_path)
+          else:
+              config = GitHubConfig()
+          
+          # Parse the command
+          processor = IssueProcessor(config=config, project_path=".")
+          comment_body = os.environ.get("COMMENT_BODY", "")
+          command = processor.parse_mention_command(comment_body)
+          
+          if not command:
+              print("No command found in comment")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("skip=true\n")
+              exit(0)
+          
+          print(f"Processing command: {command}")
+          
+          # Prepare issue data
+          issue_data = {
+              "title": os.environ.get("ISSUE_TITLE", ""),
+              "body": os.environ.get("ISSUE_BODY", ""),
+              "labels": json.loads(os.environ.get("ISSUE_LABELS", "[]")),
+          }
+          
+          # Process the command
+          result = processor.process_mention_command(command, issue_data)
+          
+          if result.get("skipped"):
+              print(f"Skipped: {result.get('reason')}")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("skip=true\n")
+              exit(0)
+          
+          # Save results
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("skip=false\n")
+              f.write(f"command={command}\n")
+          
+          # Save comment to file
+          if result.get("comment"):
+              with open("/tmp/comment.md", "w") as f:
+                  f.write(result["comment"])
+          
+          # Save labels to file
+          if result.get("suggested_labels"):
+              with open("/tmp/labels.json", "w") as f:
+                  json.dump(result["suggested_labels"], f)
+          
+          print("Command processed successfully")
+          EOF
+
+      - name: Post response comment
+        if: steps.handle.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read comment from file
+            let comment = '';
+            try {
+              comment = fs.readFileSync('/tmp/comment.md', 'utf8');
+            } catch (e) {
+              console.log('No comment file found');
+              return;
+            }
+            
+            if (!comment) {
+              console.log('Empty comment, skipping');
+              return;
+            }
+            
+            // Post comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+            
+            console.log('Response comment posted successfully');
+
+      - name: Add labels (for label command)
+        if: steps.handle.outputs.skip != 'true' && steps.handle.outputs.command == 'label'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read labels from file
+            let labels = [];
+            try {
+              const labelsJson = fs.readFileSync('/tmp/labels.json', 'utf8');
+              labels = JSON.parse(labelsJson);
+            } catch (e) {
+              console.log('No labels file found');
+              return;
+            }
+            
+            if (!labels.length) {
+              console.log('No labels to add');
+              return;
+            }
+            
+            // Get existing labels in the repo
+            const { data: repoLabels } = await github.rest.issues.listLabelsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const existingLabelNames = repoLabels.map(l => l.name.toLowerCase());
+            
+            // Filter to only labels that exist in the repo
+            const labelsToAdd = labels.filter(l => 
+              existingLabelNames.includes(l.toLowerCase())
+            );
+            
+            if (!labelsToAdd.length) {
+              console.log('No matching labels found in repository');
+              return;
+            }
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: labelsToAdd
+            });
+            
+            console.log(`Added labels: ${labelsToAdd.join(', ')}`);

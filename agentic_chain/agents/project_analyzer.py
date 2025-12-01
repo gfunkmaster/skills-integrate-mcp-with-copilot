@@ -1,23 +1,50 @@
 """
 Project Analyzer Agent - Understands project structure, dependencies, and patterns.
+
+This agent can optionally use LLM to provide deeper architectural insights.
 """
 
-import os
 import json
+import logging
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from . import BaseAgent, AgentContext
+
+if TYPE_CHECKING:
+    from ..llm import LLMProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectAnalyzer(BaseAgent):
     """
     Analyzes a project to understand its structure, dependencies,
     coding patterns, and conventions.
+    
+    When an LLM provider is configured, provides AI-powered architectural
+    insights in addition to static analysis.
     """
     
-    def __init__(self, name: str = "ProjectAnalyzer"):
+    def __init__(
+        self,
+        name: str = "ProjectAnalyzer",
+        llm_provider: Optional["LLMProvider"] = None,
+    ):
         super().__init__(name)
+        self._llm_provider = llm_provider
+    
+    @property
+    def llm_provider(self) -> Optional["LLMProvider"]:
+        """Get the LLM provider."""
+        return self._llm_provider
+    
+    @llm_provider.setter
+    def llm_provider(self, provider: "LLMProvider"):
+        """Set the LLM provider."""
+        self._llm_provider = provider
         
     def execute(self, context: AgentContext) -> AgentContext:
         """
@@ -28,6 +55,7 @@ class ProjectAnalyzer(BaseAgent):
             
         project_path = Path(context.project_path)
         
+        # Static analysis (always performed)
         analysis = {
             "structure": self._analyze_structure(project_path),
             "dependencies": self._analyze_dependencies(project_path),
@@ -37,8 +65,99 @@ class ProjectAnalyzer(BaseAgent):
             "config_files": self._find_config_files(project_path),
         }
         
+        # LLM-powered analysis (if provider is available)
+        if self._llm_provider:
+            try:
+                llm_analysis = self._perform_llm_analysis(analysis, context)
+                if llm_analysis:
+                    analysis["llm_insights"] = llm_analysis
+                    analysis["llm_enhanced"] = True
+            except Exception as e:
+                logger.warning(f"LLM analysis failed: {e}")
+                analysis["llm_enhanced"] = False
+        else:
+            analysis["llm_enhanced"] = False
+        
         context.project_analysis = analysis
         return context
+    
+    def _perform_llm_analysis(
+        self,
+        static_analysis: dict,
+        context: AgentContext,
+    ) -> Optional[dict]:
+        """Perform LLM-powered project analysis."""
+        if not self._llm_provider:
+            return None
+        
+        from ..llm import LLMMessage, format_project_analysis_prompt
+        from ..llm.base import MessageRole
+        from ..llm.prompts import PROJECT_ANALYSIS_SYSTEM
+        
+        # Format the analysis data for the prompt
+        structure = static_analysis.get("structure", {})
+        directories = structure.get("directories", [])[:20]  # Limit to 20 dirs
+        dir_structure = "\n".join(f"- {d}" for d in directories) or "No directories"
+        
+        # Format dependencies
+        deps = static_analysis.get("dependencies", {})
+        dep_lines = []
+        for lang, dep_data in deps.items():
+            if dep_data:
+                if isinstance(dep_data, list):
+                    dep_lines.append(f"**{lang}**: {', '.join(dep_data[:10])}")
+                elif isinstance(dep_data, dict):
+                    all_deps = list(dep_data.get("dependencies", {}).keys())[:10]
+                    dep_lines.append(f"**{lang}**: {', '.join(all_deps)}")
+        dependencies = "\n".join(dep_lines) or "No dependencies detected"
+        
+        # Format languages
+        languages = static_analysis.get("languages", {})
+        lang_str = ", ".join(f"{k}: {v} files" for k, v in languages.items()) or "None detected"
+        
+        # Format config files
+        config_files = ", ".join(static_analysis.get("config_files", [])[:10]) or "None"
+        
+        # Get README
+        readme = static_analysis.get("readme")
+        
+        # Build prompt
+        prompt = format_project_analysis_prompt(
+            directory_structure=dir_structure,
+            dependencies=dependencies,
+            languages=lang_str,
+            config_files=config_files,
+            readme=readme,
+        )
+        
+        messages = [
+            LLMMessage(role=MessageRole.SYSTEM, content=PROJECT_ANALYSIS_SYSTEM),
+            LLMMessage(role=MessageRole.USER, content=prompt),
+        ]
+        
+        response = self._llm_provider.complete(messages)
+        
+        # Track usage
+        if response.usage:
+            context.llm_context.add_usage(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                cost=response.usage.estimated_cost,
+            )
+            context.llm_context.provider = self._llm_provider.config.provider
+            context.llm_context.model = response.model
+        
+        context.llm_context.responses.append({
+            "type": "project_analysis",
+            "content": response.content,
+            "model": response.model,
+        })
+        
+        return {
+            "content": response.content,
+            "model": response.model,
+            "tokens_used": response.usage.total_tokens if response.usage else 0,
+        }
     
     def _analyze_structure(self, project_path: Path) -> dict:
         """Analyze directory structure."""
