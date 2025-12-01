@@ -8,6 +8,8 @@ from typing import Optional
 from .base import LLMProvider, LLMConfig, LLMError
 from .openai_provider import OpenAIProvider
 from .anthropic_provider import AnthropicProvider
+from .ollama_provider import OllamaProvider
+from .azure_provider import AzureOpenAIProvider
 
 
 class LLMFactory:
@@ -17,6 +19,9 @@ class LLMFactory:
     _providers = {
         "openai": OpenAIProvider,
         "anthropic": AnthropicProvider,
+        "ollama": OllamaProvider,
+        "azure": AzureOpenAIProvider,
+        "azure_openai": AzureOpenAIProvider,
     }
     
     @classmethod
@@ -104,7 +109,7 @@ class LLMFactory:
         """
         Create an LLM provider based on environment variables.
         
-        Checks for API keys in order: OpenAI, Anthropic.
+        Checks for API keys in order: OpenAI, Anthropic, Azure, Ollama.
         
         Returns:
             Configured LLM provider, or None if no API keys found.
@@ -116,6 +121,14 @@ class LLMFactory:
         # Try Anthropic
         if os.environ.get("ANTHROPIC_API_KEY"):
             return cls.create("anthropic")
+        
+        # Try Azure OpenAI
+        if os.environ.get("AZURE_OPENAI_API_KEY") and os.environ.get("AZURE_OPENAI_ENDPOINT"):
+            return cls.create("azure")
+        
+        # Try Ollama (local, no API key needed)
+        if os.environ.get("OLLAMA_HOST"):
+            return cls.create("ollama")
         
         return None
     

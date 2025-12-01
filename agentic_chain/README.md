@@ -217,8 +217,96 @@ The framework supports multiple LLM providers for intelligent analysis across al
 
 | Provider | Models | Environment Variable |
 |----------|--------|---------------------|
-| OpenAI | gpt-4, gpt-4-turbo, gpt-3.5-turbo | `OPENAI_API_KEY` |
+| OpenAI | gpt-4, gpt-4-turbo, gpt-3.5-turbo, gpt-4o-mini | `OPENAI_API_KEY` |
 | Anthropic | claude-3-opus, claude-3-sonnet, claude-3-haiku | `ANTHROPIC_API_KEY` |
+| Azure OpenAI | gpt-4, gpt-35-turbo (deployed models) | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT` |
+| Ollama (Local) | llama3, mistral, codellama, etc. | `OLLAMA_HOST` (optional, defaults to localhost) |
+
+### Provider Examples
+
+```python
+from agentic_chain import LLMFactory
+
+# OpenAI (default)
+llm = LLMFactory.create("openai", model="gpt-4o-mini")
+
+# Anthropic Claude
+llm = LLMFactory.create("anthropic", model="claude-3-5-sonnet-20241022")
+
+# Azure OpenAI
+llm = LLMFactory.create(
+    "azure",
+    model="gpt-4-deployment",  # Your deployment name
+    api_base="https://your-resource.openai.azure.com/",
+    api_key="your-azure-api-key",
+)
+
+# Local with Ollama (free, private, no API key needed!)
+llm = LLMFactory.create("ollama", model="llama3")
+```
+
+### Configuration File
+
+Create a `.agentic-chain.yml` file in your project root for persistent configuration:
+
+```yaml
+# .agentic-chain.yml
+llm:
+  provider: "openai"
+  model: "gpt-4o-mini"
+  temperature: 0.7
+  max_tokens: 2000
+  
+# Response caching (reduces API costs)
+cache:
+  enabled: true
+  ttl: 3600  # seconds
+
+# Cost management
+cost:
+  max_cost_per_analysis: 0.05  # USD per analysis
+  budget_alert_threshold: 10.00  # Monthly budget alert
+
+# Privacy settings
+privacy:
+  redact_pii: false
+  share_telemetry: false
+  local_only: false  # Force use of local models only (Ollama)
+```
+
+### Load Configuration
+
+```python
+from agentic_chain import load_config, AgenticChain
+
+# Load from .agentic-chain.yml
+config = load_config(project_path="/path/to/project")
+
+# Use the config
+from agentic_chain import LLMFactory
+llm = LLMFactory.create(
+    config.provider,
+    model=config.model,
+    api_key=config.api_key,
+)
+chain = AgenticChain(project_path="/path/to/project", llm_provider=llm)
+```
+
+### Response Caching
+
+Enable caching to reduce API costs for repeated analyses:
+
+```python
+from agentic_chain import get_cache, ResponseCache
+
+# Get or create a global cache
+cache = get_cache(enabled=True, ttl=3600, max_size=1000)
+
+# View cache statistics
+stats = cache.get_stats()
+print(f"Cache hit rate: {stats['hit_rate']}%")
+print(f"Tokens saved: {stats['hits'] * avg_tokens}")
+```
 
 ### Features
 
