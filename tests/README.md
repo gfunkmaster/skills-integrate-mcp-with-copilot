@@ -69,15 +69,29 @@ pytest --lf
 ```
 tests/
 ├── conftest.py                     # Shared fixtures and configuration
-├── test_llm_base.py               # Tests for LLM base classes
-├── test_llm_openai.py             # Tests for OpenAI provider
-├── test_llm_anthropic.py          # Tests for Anthropic provider (if exists)
-├── test_orchestrator.py           # Tests for main orchestrator
-├── test_project_analyzer.py       # Tests for project analysis
-├── test_issue_analyzer.py         # Tests for issue analysis
-├── test_code_reviewer.py          # Tests for code review
-├── test_solution_implementer.py   # Tests for solution implementation
-└── test_integration.py            # Integration tests (if exists)
+├── test_api.py                     # Tests for REST API endpoints
+├── test_benchmarks.py              # Performance benchmark tests
+├── test_cli.py                     # Tests for CLI commands
+├── test_code_reviewer.py           # Tests for code review agent
+├── test_github_integration.py      # Tests for GitHub integration
+├── test_interactive.py             # Tests for interactive mode
+├── test_issue_analyzer.py          # Tests for issue analysis
+├── test_llm.py                     # Tests for LLM integration
+├── test_llm_agents.py              # Tests for LLM-powered agents
+├── test_llm_base.py                # Tests for LLM base classes
+├── test_llm_cache.py               # Tests for LLM response caching
+├── test_llm_config.py              # Tests for LLM configuration
+├── test_llm_openai.py              # Tests for OpenAI provider
+├── test_llm_prompts.py             # Tests for LLM prompts
+├── test_llm_providers.py           # Tests for LLM providers
+├── test_memory.py                  # Tests for memory system
+├── test_observability.py           # Tests for observability (tracing, metrics)
+├── test_orchestrator.py            # Tests for main orchestrator
+├── test_parallel.py                # Tests for parallel execution
+├── test_plugins.py                 # Tests for plugin system
+├── test_project_analyzer.py        # Tests for project analysis
+├── test_similar_issue_detector.py  # Tests for similar issue detection
+└── test_solution_implementer.py    # Tests for solution implementation
 ```
 
 ## Writing Tests
