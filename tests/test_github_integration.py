@@ -126,7 +126,7 @@ class TestCommentFormatter:
                 "suggested_labels": ["bug", "priority:high"],
             },
             "code_review": {
-                "relevant_files": ["src/app.py"],
+                "relevant_files": ["agentic_chain/orchestrator.py"],
                 "potential_issues": [],
             },
             "solution": {
