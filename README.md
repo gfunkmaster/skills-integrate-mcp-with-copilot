@@ -1,37 +1,58 @@
-<div align="center">
+# Agentic Chain
 
-# 🎉 Congratulations gfunkmaster! 🎉
+**The fastest way to get AI-powered insights on GitHub issues - under 5 seconds, zero configuration.**
 
-<img src="https://octodex.github.com/images/welcometocat.png" height="200px" />
+Stop spending hours triaging issues. Get AI-powered insights in seconds.
 
-### 🌟 You've successfully completed the exercise! 🌟
+## Quick Start
 
-## 🚀 Share Your Success!
+See the [full documentation](agentic_chain/README.md) for detailed installation and usage instructions.
 
-**Show off your new skills and inspire others!**
+### Installation
 
-<a href="https://twitter.com/intent/tweet?text=I%20just%20completed%20the%20%22Integrate%20MCP%20with%20GitHub%20Copilot%22%20GitHub%20Skills%20hands-on%20exercise!%20%F0%9F%8E%89%0A%0Ahttps%3A%2F%2Fgithub.com%2Fgfunkmaster%2Fskills-integrate-mcp-with-copilot%0A%0A%23GitHubSkills%20%23OpenSource%20%23GitHubLearn" target="_blank" rel="noopener noreferrer">
-  <img src="https://img.shields.io/badge/Share%20on%20X-1da1f2?style=for-the-badge&logo=x&logoColor=white" alt="Share on X" />
-</a>
-<a href="https://bsky.app/intent/compose?text=I%20just%20completed%20the%20%22Integrate%20MCP%20with%20GitHub%20Copilot%22%20GitHub%20Skills%20hands-on%20exercise!%20%F0%9F%8E%89%0A%0Ahttps%3A%2F%2Fgithub.com%2Fgfunkmaster%2Fskills-integrate-mcp-with-copilot%0A%0A%23GitHubSkills%20%23OpenSource%20%23GitHubLearn" target="_blank" rel="noopener noreferrer">
-  <img src="https://img.shields.io/badge/Share%20on%20Bluesky-0085ff?style=for-the-badge&logo=bluesky&logoColor=white" alt="Share on Bluesky" />
-</a>
-<a href="https://www.linkedin.com/feed/?shareActive=true&text=I%20just%20completed%20the%20%22Integrate%20MCP%20with%20GitHub%20Copilot%22%20GitHub%20Skills%20hands-on%20exercise!%20%F0%9F%8E%89%0A%0Ahttps%3A%2F%2Fgithub.com%2Fgfunkmaster%2Fskills-integrate-mcp-with-copilot%0A%0A%23GitHubSkills%20%23OpenSource%20%23GitHubLearn" target="_blank" rel="noopener noreferrer">
-  <img src="https://img.shields.io/badge/Share%20on%20LinkedIn-0077b5?style=for-the-badge&logo=linkedin&logoColor=white" alt="Share on LinkedIn" />
-</a>
+```bash
+pip install agentic-chain
+```
 
-### 🎯 What's Next?
+### Basic Usage
 
-**Keep the momentum going!**
+```python
+from agentic_chain import AgenticChain
 
-[![](https://img.shields.io/badge/Return%20to%20Exercise-%E2%86%92-1f883d?style=for-the-badge&logo=github&labelColor=197935)](https://github.com/gfunkmaster/skills-integrate-mcp-with-copilot/issues/2)
-[![GitHub Skills](https://img.shields.io/badge/Explore%20GitHub%20Skills-000000?style=for-the-badge&logo=github&logoColor=white)](https://learn.github.com/skills)
+# One line setup
+chain = AgenticChain(project_path="/path/to/your/project")
 
-*There's no better way to learn than building things!* 🚀
+# Analyze any GitHub issue
+issue = {
+    "title": "Add user authentication feature",
+    "body": "We need to implement user login and registration...",
+    "labels": [{"name": "feature"}, {"name": "high-priority"}]
+}
 
-</div>
+# Get insights in < 5 seconds
+result = chain.solve_issue(issue)
 
----
+# View the analysis
+print(chain.get_solution_summary())
+```
 
-&copy; 2025 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+## Key Features
+
+- **⚡ Instant Issue Classification**: Automatically categorize issues as bugs, features, enhancements, or documentation
+- **📊 Priority Scoring**: Smart priority scoring algorithm based on labels, keywords, and urgency indicators
+- **🔍 Similar Issue Detection**: Find potentially related or duplicate issues
+- **⏱️ Time-to-Fix Estimation**: Estimate implementation effort based on complexity analysis
+- **🏷️ Auto-Labeling Suggestions**: Get intelligent label recommendations for new issues
+- **📈 Sentiment Analysis**: Detect urgency from issue language and tone
+- **🔗 GitHub Native**: Deep integration with GitHub issue workflows
+
+## Documentation
+
+- [Full Documentation](agentic_chain/README.md)
+- [Competitive Analysis](docs/competitive-analysis.md)
+- [Plugin Guide](agentic_chain/plugins/PLUGIN_GUIDE.md)
+
+## License
+
+MIT License - see LICENSE file for details.
 
