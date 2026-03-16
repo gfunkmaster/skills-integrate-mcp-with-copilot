@@ -2,7 +2,7 @@
 
 *Auto-updated weekly via GitHub Actions*
 
-**Last Updated:** 2026-03-09 09:18 UTC
+**Last Updated:** 2026-03-16 09:26 UTC
 
 ---
 
@@ -47,10 +47,10 @@ Agentic Chain is the **fastest, lightest, most focused** GitHub issue analysis t
 <!-- STARS_SECTION_START -->
 | Project | Stars | Trend |
 |---------|-------|-------|
-| [CrewAI](https://github.com/crewAIInc/crewAI) | 45,566 | 📈 Growing |
-| [Haystack](https://github.com/deepset-ai/haystack) | 24,437 | 📈 Growing |
-| [Probot](https://github.com/probot/probot) | 9,472 | 📈 Growing |
-| [MS Agent Framework](https://github.com/microsoft/agent-framework) | 7,744 | 📈 Growing |
+| [CrewAI](https://github.com/crewAIInc/crewAI) | 46,200 | 📈 Growing |
+| [Haystack](https://github.com/deepset-ai/haystack) | 24,519 | 📈 Growing |
+| [Probot](https://github.com/probot/probot) | 9,476 | 📈 Growing |
+| [MS Agent Framework](https://github.com/microsoft/agent-framework) | 7,967 | 📈 Growing |
 | [Agentic Chain](https://github.com/skills/integrate-mcp-with-copilot) | Growing | 🚀 New |
 <!-- STARS_SECTION_END -->
 
